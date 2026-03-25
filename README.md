@@ -1,5 +1,12 @@
 # LLM Gateway on Apigee X
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Apigee X](https://img.shields.io/badge/Apigee-X-4285F4?logo=google-cloud&logoColor=white)](https://cloud.google.com/apigee)
+[![Vertex AI](https://img.shields.io/badge/Vertex_AI-Gemini%20%7C%20Claude%20%7C%20MaaS-34A853?logo=google-cloud&logoColor=white)](https://cloud.google.com/vertex-ai)
+[![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI--compatible-412991?logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
+[![Next.js](https://img.shields.io/badge/Admin_UI-Next.js_15-black?logo=next.js)](ui/)
+[![Tests](https://img.shields.io/badge/Tests-75%20passing-brightgreen)](tests/run-tests.sh)
+
 An enterprise-grade LLM API gateway built on **Google Cloud Apigee X**, providing a unified
 OpenAI-compatible interface to 30+ models across four backend types.
 
