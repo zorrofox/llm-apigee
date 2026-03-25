@@ -1,34 +1,33 @@
 # LLM Gateway on Apigee X
 
 An enterprise-grade LLM API gateway built on **Google Cloud Apigee X**, providing a unified
-OpenAI-compatible interface over 30+ models across four backend types.
+OpenAI-compatible interface to 30+ models across four backend types.
 
 ## Features
 
 | Feature | Details |
 |---------|---------|
-| **Unified API** | Single OpenAI-compatible endpoint (`POST /v1/chat/completions`) for all models |
-| **Multi-model routing** | Gemini 2.0/2.5/3.x (incl. image models), Claude 4.x, GLM, DeepSeek, Kimi, MiniMax, Qwen + free models |
-| **Image generation** | `gemini-2.5-flash-image` and `gemini-3.1-flash-image-preview` — returns OpenAI content array with `image_url` data URLs; image responses bypass semantic cache |
-| **Cross-project routing** | Quota isolation across GCP projects (`YOUR_PROJECT_ID` / `YOUR_CROSS_PROJECT_ID`) |
-| **Semantic caching** | Vertex AI Vector Search (768-dim) + Apigee distributed cache, ~0.95 similarity threshold |
-| **API key authentication** | Apigee native API Products + VerifyAPIKey, 1000 req/min quota |
+| **Unified API** | Single `POST /v1/chat/completions` endpoint, OpenAI-compatible |
+| **Multi-model routing** | Gemini 2.0/2.5/3.x (incl. image), Claude 4.x, GLM, DeepSeek, Kimi, MiniMax, Qwen |
 | **Free model tier** | 7 OpenCode Zen free models (`opencode/*`), no token cost |
-| **Observability** | Structured Cloud Logging, log-based metrics, Cloud Monitoring dashboard, 3 alert policies |
-| **Token quota** | App/product-level token quota with model weight coefficients, OpenCode excluded |
-| **Latency logging** | `totalLatencyMs` / `targetLatencyMs` logged per request in Cloud Logging |
-| **Admin UI** | Next.js 15 control console (IAP-protected Cloud Run): dashboard, API keys, quota config |
-| **Streaming** | `"stream":true` → SSE passthrough; Gemini uses `streamGenerateContent?alt=sse`, MaaS/Claude/OpenCode native SSE |
-| **Error transparency** | All errors carry `error.source`: `"gateway"` (Apigee quota/auth) vs `"model"` (backend 4xx/5xx) |
-| **Test suite** | 75 automated tests across 15 sections, 71 pass / 0 fail |
+| **Cross-project routing** | Quota isolation across GCP projects (`PROJECT_ID/CROSS_PROJECT_ID`) |
+| **Semantic caching** | Vertex AI Vector Search (768-dim) + Apigee distributed cache, ~0.95 similarity |
+| **API key authentication** | Apigee native API Products + VerifyAPIKey, 1000 req/min quota |
+| **Token quota** | App/product-level token quota with model weight coefficients |
+| **Streaming** | `"stream":true` → SSE passthrough for all backends |
+| **Image generation** | Gemini image models → OpenAI content array with `image_url` data URLs |
+| **Error transparency** | `error.source: "gateway"` vs `"model"` on every error |
+| **Observability** | Structured Cloud Logging, log-based metrics, Monitoring dashboard, 3 alerts |
+| **Admin UI** | Next.js 15 control console, IAP-protected Cloud Run |
+| **Test suite** | 75 automated tests across 15 sections |
 
 ---
 
 ## Architecture
 
-> **Interactive version:** [`docs/architecture.html`](docs/architecture.html) — open in any browser for full dark-theme detail.
+> **Interactive diagram:** open [`docs/architecture.html`](docs/architecture.html) in any browser.
 
-![LLM Gateway on Apigee X — Architecture](docs/architecture.png)
+![LLM Gateway Architecture](docs/architecture.png)
 
 ```
 Client (POST /v1/chat/completions, x-api-key: <key>)
@@ -37,114 +36,73 @@ Client (POST /v1/chat/completions, x-api-key: <key>)
   Global HTTPS Load Balancer (static IP, managed SSL cert)
            │
            ▼ PSC NEG → Apigee eval-instance
-┌──────────────────────────────────────────────────────────────────┐
-│                       Apigee X (YOUR_PROJECT_ID, prod env)            │
-│                                                                  │
-│  ProxyEndpoint PreFlow (REQUEST)                                 │
-│  ① VA-VerifyApiKey      x-api-key header, API Product quota      │
-│  ② QU-LlmQuota          1000 req/min per app                     │
-│  ③ EV-ExtractModel      $.model from request body                │
-│  ④ JS-DetectBackend     set llm.backend = "vertex" | "opencode"  │
-│  ⑤ FC-SemanticCacheLookup                                        │
-│     ├─ SC-GetEmbedding      → Vertex AI text-embedding-004       │
-│     ├─ JS-BuildVsPayload    → findNeighbors payload              │
-│     ├─ SC-VectorSearch      → similarity ≥ 0.95?                 │
-│     ├─ LC-LookupCache       → Apigee distributed cache           │
-│     └─ AM-CacheHitResponse  → return cached (x-cache: HIT)       │
-│                                                                  │
-│  RouteRule (evaluated after PreFlow)                             │
-│  ┌─ CacheHit  → null route (response already set)               │
-│  ├─ OpenCode  → opencode TargetEndpoint (no auth)               │
-│  └─ default   → vertex TargetEndpoint (GoogleAccessToken)        │
-│                                                                  │
-│  TargetEndpoint PreFlow (REQUEST)                                │
-│  ⑥ JS-ModelRouter       → set target.url + llm.* metadata       │
-│  ⑦ JS-RequestNormalizer → OpenAI → Gemini/Claude/MaaS format    │
-│  [⑧ AM-StripAuthHeader  → OpenCode only: remove x-api-key]      │
-│                                                                  │
-│  ProxyEndpoint PreFlow (RESPONSE, cache MISS only)               │
-│  ⑨  JS-ResponseNormalizer  → backend → OpenAI format            │
-│      handles reasoning_content for thinking models              │
-│  ⑩  FC-SemanticCachePopulate                                     │
-│      ├─ JS-BuildCacheId         → FNV-1a hash key               │
-│      ├─ PC-PopulateCache        → store response, TTL 3600s      │
-│      ├─ SC-GetEmbeddingPopulate → re-fetch embedding             │
-│      ├─ JS-BuildUpsertPayload   → build VS upsert JSON           │
-│      └─ SC-UpsertVector         → VS upsertDatapoints            │
-│  ⑪  AM-AddObsHeaders   → x-cache, x-cache-score, x-llm-model   │
-│                                                                  │
-│  PostFlow (RESPONSE)                                             │
-│  ⑫  AM-SetStatusForLog → capture response.status.code           │
-│  ⑬  ML-CloudLogging    → structured JSON → Cloud Logging         │
-│      (also called from FaultRules for 401/429 errors)           │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                  Apigee X (YOUR_PROJECT_ID, prod env)           │
+│                                                                 │
+│  ProxyEndpoint PreFlow (REQUEST)                                │
+│  ① VA-VerifyApiKey      API key validation, product quota       │
+│  ② QU-LlmQuota          1000 req/min per app                    │
+│  ③ EV-ExtractModel      $.model from request body               │
+│  ④ JS-DetectBackend     llm.backend = "vertex" | "opencode"    │
+│  ⑤ FC-SemanticCacheLookup                                       │
+│     ├─ SC-GetEmbedding      → text-embedding-004 (768-dim)     │
+│     ├─ SC-VectorSearch      → similarity ≥ 0.95?               │
+│     ├─ LC-LookupCache       → Apigee distributed cache         │
+│     └─ AM-CacheHitResponse  → return cached (x-cache: HIT)     │
+│                                                                 │
+│  RouteRule: CacheHit → null | OpenCode → opencode | → vertex   │
+│                                                                 │
+│  TargetEndpoint PreFlow (REQUEST)                               │
+│  ⑥ JS-ModelRouter       → set target.url + routing metadata    │
+│  ⑦ JS-RequestNormalizer → OpenAI → Gemini/Claude/MaaS format   │
+│                                                                 │
+│  ProxyEndpoint PreFlow (RESPONSE, cache MISS only)              │
+│  ⑧  JS-ResponseNormalizer  → all backends → OpenAI format      │
+│  ⑨  JS-ComputeEffectiveTokens + Q-TokenQuotaCounter            │
+│  ⑩  FC-SemanticCachePopulate → store response + upsert vector  │
+│  ⑪  AM-AddObsHeaders   → x-cache, x-cache-score, x-llm-model  │
+│                                                                 │
+│  PostFlow: ML-CloudLogging → structured JSON → Cloud Logging   │
+│  FaultRules: AM-AuthError / AM-QuotaError (with logging)       │
+└─────────────────────────────────────────────────────────────────┘
            │
-           ▼  (one of four backends)
-  A. Vertex AI generateContent  (Gemini models)
-  B. Vertex AI rawPredict       (Claude models)
+  A. Vertex AI generateContent  (Gemini)
+  B. Vertex AI rawPredict       (Claude)
   C. Vertex AI OpenAPI endpoint (all MaaS partner models)
-  D. OpenCode Zen               (free models, no auth)
+  D. OpenCode Zen               (free, no auth)
 ```
-
----
-
-## Backend Endpoints
-
-### A — Gemini (generateContent)
-```
-https://aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/global/
-    publishers/google/models/{MODEL}:generateContent
-```
-
-### B — Claude (rawPredict)
-```
-https://aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/global/
-    publishers/anthropic/models/{MODEL}:rawPredict
-```
-
-### C — MaaS Partner Models (OpenAPI-compatible)
-```
-https://aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/global/
-    endpoints/openapi/chat/completions
-
-Body: {"model": "publisher/model-id", "messages": [...], "max_tokens": N}
-```
-All partner models (GLM, DeepSeek, Kimi, MiniMax, Qwen) share this single endpoint.
-Response is OpenAI-compatible. Thinking models return `reasoning_content` instead of `content`.
-
-### D — OpenCode Zen (free, no auth)
-```
-https://opencode.ai/zen/v1/chat/completions
-```
-No Bearer token required. Model field uses bare model name (e.g., `nemotron-3-super-free`).
 
 ---
 
 ## Supported Models
 
-### Google Gemini (YOUR_PROJECT_ID, Endpoint A)
+### Google Gemini — Endpoint A (generateContent)
 | Model | Notes |
 |-------|-------|
 | `gemini-3.1-pro-preview` | |
-| `gemini-3.1-flash-image-preview` | image generation model |
-| `gemini-3.1-flash-lite-preview` | thinking model |
-| `gemini-2.5-flash-image` | image generation model |
+| `gemini-3.1-flash-lite-preview` | thinking |
+| `gemini-3.1-flash-image-preview` | image generation |
 | `gemini-3-pro-preview` | |
-| `gemini-3-flash-preview` | thinking model |
-| `gemini-2.5-pro` | thinking model |
+| `gemini-3-flash-preview` | thinking |
+| `gemini-2.5-pro` | thinking |
 | `gemini-2.5-flash` | |
 | `gemini-2.5-flash-lite` | |
+| `gemini-2.5-flash-image` | image generation |
 | `gemini-2.0-flash-001` | default fallback |
 | `gemini-2.0-flash-lite` | |
-| `YOUR_CROSS_PROJECT_ID/gemini-2.5-pro` | cross-project (YOUR_CROSS_PROJECT_ID) |
-| `YOUR_CROSS_PROJECT_ID/gemini-3-flash-preview` | cross-project (YOUR_CROSS_PROJECT_ID) |
+| `YOUR_CROSS_PROJECT_ID/gemini-2.5-pro` | cross-project quota isolation |
+| `YOUR_CROSS_PROJECT_ID/gemini-3-flash-preview` | cross-project |
 
-### Anthropic Claude (YOUR_PROJECT_ID, Endpoint B)
+> Gemini 3.x/2.5 thinking models: thinking tokens count against `maxOutputTokens`.
+> With small `max_tokens`, thinking may exhaust the budget → empty response.
+> Set `max_tokens ≥ 200` for thinking models.
+
+### Anthropic Claude — Endpoint B (rawPredict)
 `claude-opus-4-6` · `claude-sonnet-4-6` · `claude-haiku-4-5` · `claude-opus-4-5` · `claude-sonnet-4-5` · `claude-opus-4` · `claude-opus-4-1`
 
-### MaaS Partner Models (YOUR_PROJECT_ID, Endpoint C — OpenAPI)
-| Model alias | Backend model | Provider |
-|-------------|---------------|----------|
+### MaaS Partner Models — Endpoint C (Vertex AI OpenAPI)
+| Model alias | Backend | Provider |
+|-------------|---------|----------|
 | `glm-4.7` | `zai-org/glm-4.7-maas` | ZhipuAI |
 | `glm-5` | `zai-org/glm-5-maas` | ZhipuAI (thinking) |
 | `deepseek-v3.2` | `deepseek-ai/deepseek-v3.2-maas` | DeepSeek |
@@ -156,169 +114,118 @@ No Bearer token required. Model field uses bare model name (e.g., `nemotron-3-su
 | `qwen3-next-80b-think` | `qwen/qwen3-next-80b-a3b-thinking-maas` | Alibaba (thinking) |
 | `qwen3-coder` | `qwen/qwen3-coder-480b-a35b-instruct-maas` | Alibaba |
 
-### OpenCode Zen — Free (Endpoint D)
-| Model | Provider |
-|-------|----------|
-| `opencode/big-pickle` | Minimax |
-| `opencode/minimax-m2.5-free` | Minimax |
-| `opencode/mimo-v2-flash-free` | MiMo |
-| `opencode/mimo-v2-pro-free` | MiMo |
-| `opencode/mimo-v2-omni-free` | MiMo |
-| `opencode/trinity-large-preview-free` | Trinity |
-| `opencode/nemotron-3-super-free` | Nvidia (may rate-limit) |
+### OpenCode Zen — Endpoint D (free, no auth)
+`opencode/big-pickle` · `opencode/minimax-m2.5-free` · `opencode/mimo-v2-flash-free` · `opencode/mimo-v2-pro-free` · `opencode/mimo-v2-omni-free` · `opencode/trinity-large-preview-free` · `opencode/nemotron-3-super-free`
 
 ---
 
-## Quick Start
+## Quick API Reference
 
-### Prerequisites
-- GCP project with Vertex AI and Apigee X enabled
-- `gcloud` CLI authenticated
-- `apikey` value from `infra/api-key.env`
-
-### Send a request
 ```bash
-source infra/api-key.env
-HOST=YOUR_LB_IP.nip.io
+# Load environment (after deploying)
+source infra/api-key.env   # sets API_KEY
+source infra/apigee.env    # sets APIGEE_HOST
+HOST="https://$APIGEE_HOST"
 
-# Streaming (any model — add "stream":true)
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"Hello!"}],"max_tokens":100,"stream":true}'
+# Health check
+curl -sk $HOST/v1/health
 
-# Gemini
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" \
-  -H "Content-Type: application/json" \
+# Gemini 2.5 Flash
+curl -sk -X POST $HOST/v1/chat/completions \
+  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"Hello!"}],"max_tokens":100}'
 
-# Claude
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" \
-  -H "Content-Type: application/json" \
+# Claude Sonnet 4.6
+curl -sk -X POST $HOST/v1/chat/completions \
+  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello!"}],"max_tokens":100}'
 
-# GLM (MaaS via OpenAPI endpoint)
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" \
-  -H "Content-Type: application/json" \
+# GLM-5 (MaaS)
+curl -sk -X POST $HOST/v1/chat/completions \
+  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"model":"glm-5","messages":[{"role":"user","content":"Hello!"}],"max_tokens":100}'
 
-# Free model (no quota cost)
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" \
-  -H "Content-Type: application/json" \
+# Free model ($0 cost)
+curl -sk -X POST $HOST/v1/chat/completions \
+  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"model":"opencode/big-pickle","messages":[{"role":"user","content":"Hello!"}],"max_tokens":100}'
 
-# Cross-project routing (YOUR_CROSS_PROJECT_ID quota pool)
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"YOUR_CROSS_PROJECT_ID/gemini-2.5-pro","messages":[{"role":"user","content":"Hello!"}],"max_tokens":100}'
+# Streaming (any model)
+curl -sk -X POST $HOST/v1/chat/completions \
+  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"Count 1 to 5"}],"max_tokens":100,"stream":true}'
+
+# Cross-project routing
+curl -sk -X POST $HOST/v1/chat/completions \
+  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"YOUR_CROSS_PROJECT_ID/gemini-2.5-pro","messages":[{"role":"user","content":"Hi"}],"max_tokens":50}'
 ```
 
-### Response format — text (OpenAI-compatible)
+### Response format
 ```json
 {
   "id": "chatcmpl-...",
   "object": "chat.completion",
   "model": "gemini-2.5-flash",
-  "choices": [{"index":0,"message":{"role":"assistant","content":"Hello! ..."},"finish_reason":"stop"}],
-  "usage": {"prompt_tokens":8,"completion_tokens":42,"total_tokens":50}
+  "choices": [{"index":0,"message":{"role":"assistant","content":"Hello!"},"finish_reason":"stop"}],
+  "usage": {"prompt_tokens":8,"completion_tokens":12,"total_tokens":20}
 }
 ```
-
-### Response format — image generation models
-Image models (`gemini-2.5-flash-image`, `gemini-3.1-flash-image-preview`) return a content array:
-```json
-{
-  "choices": [{"index":0,"message":{"role":"assistant","content":[
-    {"type":"text","text":"Here is the image:"},
-    {"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0K..."}}
-  ]},"finish_reason":"stop"}]
-}
-```
-- `responseModalities: ["TEXT","IMAGE"]` is injected automatically; no client change needed
-- Image responses are **not** stored in the semantic cache (payload ~1MB+)
-- Client can override by passing `responseModalities` in the request body
 
 ### Response headers
 ```
 x-cache: HIT | MISS
-x-cache-score: 0.9999979    # cosine similarity (on HIT)
+x-cache-score: 0.9999979   # cosine similarity (HIT only)
 x-llm-model: gemini-2.5-flash
 x-llm-project: YOUR_PROJECT_ID
 ```
-> Streaming responses (`stream:true`) do not include `x-cache` / `x-llm-*` headers — the response is a raw SSE passthrough.
+> Streaming (`stream:true`) skips cache lookup/populate and all response-side headers — pure SSE passthrough.
 
-### Streaming
-Add `"stream": true` to any request. The gateway passes through the backend's native SSE stream:
+### Error taxonomy
+| `error.source` | `error.code` | Meaning |
+|----------------|--------------|---------|
+| `gateway` | `invalid_api_key` | Bad or missing API key |
+| `gateway` | `rate_limit_exceeded` | Apigee req/min quota (retry after 60s) |
+| `gateway` | `token_quota_exceeded` | Apigee token quota (retry after 3600s) |
+| `model` | `upstream_rate_limit` | Backend 429 — model's own quota |
+| `model` | `upstream_error` | Other backend 4xx/5xx |
+
+---
+
+## Deploy Your Own
+
+### Prerequisites
+
+- GCP project with billing enabled
+- `gcloud` CLI installed and authenticated (`gcloud auth login`)
+- `python3` (for bundle packaging and polling scripts)
+- Docker (for Admin UI only)
+- Permissions: Project Owner or custom role with Apigee, Compute, Vertex AI, IAM admin
+
+> **Enable required APIs first** (see Phase 1.1).
+
+### Step 0 — Clone and configure
 
 ```bash
-curl -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"Count 1 to 5"}],"max_tokens":100,"stream":true}'
+git clone https://github.com/YOUR_GITHUB_USER/llm-apigee.git
+cd llm-apigee
+
+# 1. Copy and fill in your environment config
+cp infra/apigee.env.example infra/apigee.env
+# Edit infra/apigee.env — fill in PROJECT_ID, REGION, and VS IDs after Phase 1
+
+# 2. After completing Phase 1 (infra provisioned), run configure.sh once:
+#    This substitutes YOUR_* placeholders in Apigee XML/JS with your real values.
+source infra/apigee.env && bash infra/configure.sh
 ```
 
-| Backend | SSE Format | Content-Type |
-|---------|-----------|--------------|
-| Gemini | `data: {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}` | `text/event-stream` |
-| Claude (rawPredict) | `event: content_block_delta` / `data: {"type":"..."}` | `text/event-stream` |
-| MaaS (OpenAPI) | `data: {"choices":[{"delta":{"content":"..."}}]}` | `text/event-stream` |
-| OpenCode Zen | `data: {"choices":[{"delta":{"content":"..."}}]}` | `text/event-stream` |
-
-**Streaming behaviour:**
-- Semantic cache is **bypassed** (no lookup, no populate)
-- Token quota counter is **not updated** (rate-limit quota still enforced)
-- Observability headers and Cloud Logging are **skipped** for streaming requests
-- All response-side policies are skipped to allow true SSE passthrough without buffering
-
-### Error responses — distinguishing gateway vs model errors
-
-Every error response includes an `error.source` field so clients can tell exactly where the problem originated:
-
-| `source` | `type` | `code` | Meaning | `Retry-After` |
-|----------|--------|--------|---------|--------------|
-| `gateway` | `rate_limit_error` | `rate_limit_exceeded` | Apigee req/min quota hit | 60 s |
-| `gateway` | `token_quota_exceeded` | `token_quota_exceeded` | Apigee token quota exhausted | 3600 s |
-| `gateway` | `invalid_request_error` | `invalid_api_key` | Bad or missing API key | — |
-| `model` | `upstream_error` | `upstream_rate_limit` | Backend model 429 (model's own quota) | 60 s |
-| `model` | `upstream_error` | `upstream_error` | Other backend 4xx/5xx | — |
-
-```json
-// Gateway quota — retry in 60 s
-{"error":{"message":"Rate limit exceeded. Please retry after 60 seconds.",
-           "type":"rate_limit_error","code":"rate_limit_exceeded","source":"gateway"}}
-
-// Backend model quota — backend is rate-limiting (not the gateway)
-{"error":{"message":"Resource has been exhausted (RESOURCE_EXHAUSTED).",
-           "type":"upstream_error","code":"upstream_rate_limit","source":"model"}}
-```
-
----
-
-## Semantic Cache
-
-```
-Request
-  └─ Embed prompt (text-embedding-004, 768-dim)
-       └─ Vector Search findNeighbors (similarity ≥ 0.95)
-            ├─ HIT  → LookupCache → return stored response (x-cache: HIT)
-            └─ MISS → call LLM → normalize → store in cache + upsert vector
-```
-
-**Cache key:** `FNV-1a("{model}:{prompt_text}")` — model-scoped, prevents cross-model collisions
-**TTL:** 3600 seconds
-**Vector Search propagation delay:** ~60 s for stream-updated vectors to become queryable
-
----
-
-## Implementation Steps
-
-> All commands assume: `PROJECT_ID=YOUR_PROJECT_ID`, `PROJECT_NUMBER=YOUR_PROJECT_NUMBER`,
-> `ORG=YOUR_PROJECT_ID`, `REGION=us-central1`. Adapt variable values for your environment.
-> Run `TOKEN=$(gcloud auth print-access-token)` before each curl block.
+`infra/configure.sh` patches these files in-place (uses `sed`; revert with `git checkout -- apigee/`):
+- `apigee/sharedflows/SemanticCache-Lookup/*/SC-GetEmbedding.xml`
+- `apigee/sharedflows/SemanticCache-Lookup/*/SC-VectorSearch.xml`
+- `apigee/sharedflows/SemanticCache-Populate/*/SC-GetEmbeddingPopulate.xml`
+- `apigee/sharedflows/SemanticCache-Populate/*/SC-UpsertVector.xml`
+- `apigee/proxies/llm-gateway/apiproxy/policies/ML-CloudLogging.xml`
+- `apigee/proxies/llm-gateway/apiproxy/resources/jsc/model-router.js`
 
 ---
 
@@ -327,18 +234,29 @@ Request
 #### 1.1 Enable required APIs
 
 ```bash
+source infra/apigee.env
+bash infra/01-enable-apis.sh
+# Enables: apigee, aiplatform, compute, servicenetworking, logging, monitoring, etc.
+```
+
+Or manually:
+```bash
 gcloud services enable \
   apigee.googleapis.com \
   apigeeconnect.googleapis.com \
+  aiplatform.googleapis.com \
   compute.googleapis.com \
   servicenetworking.googleapis.com \
   cloudresourcemanager.googleapis.com \
+  logging.googleapis.com \
+  monitoring.googleapis.com \
+  secretmanager.googleapis.com \
   --project=$PROJECT_ID
 ```
 
-#### 1.2 Create dedicated Apigee VPC
+#### 1.2 Create Apigee VPC
 
-Apigee X requires a dedicated VPC with a `/22` subnet for its managed instances.
+Apigee X requires a dedicated VPC with a `/22` subnet.
 
 ```bash
 # VPC
@@ -377,7 +295,13 @@ gcloud services vpc-peerings connect \
 #### 1.4 Provision Apigee X organization *(takes 20–30 min)*
 
 ```bash
-# Start async provisioning
+source infra/apigee.env
+bash infra/02-provision-apigee.sh
+# Starts async provisioning; use poll-apigee-provision.sh to monitor
+```
+
+Or manually:
+```bash
 gcloud alpha apigee organizations provision \
   --project=$PROJECT_ID \
   --authorized-network=apigee-vpc \
@@ -385,136 +309,46 @@ gcloud alpha apigee organizations provision \
   --analytics-region=us-central1 \
   --async
 
-# Poll progress (replace <OP_ID> with the operation ID from above output)
+# Poll progress (replace <OP_ID> with the returned operation ID)
 OP_ID="<OP_ID>"
-while true; do
-  RESP=$(curl -s \
-    "https://apigee.googleapis.com/v1/organizations/$ORG/operations/$OP_ID" \
-    -H "Authorization: Bearer $(gcloud auth print-access-token)")
-  PCT=$(echo $RESP | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('metadata',{}).get('progress',{}).get('percentDone','0'),'%',d.get('metadata',{}).get('state',''))")
-  echo "$(date +%H:%M:%S) $PCT"
-  echo "$PCT" | grep -q "FINISHED" && break
-  sleep 30
-done
+bash infra/poll-apigee-provision.sh "$OP_ID"
 ```
 
 #### 1.5 Create environment, environment group, and attach instance
 
 ```bash
-TOKEN=$(gcloud auth print-access-token)
-
-# Create prod environment
-curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/environments" \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"prod","displayName":"Production"}'
-# Poll returned operation until done (~1 min)
-
-# Reserve static external IP for the Load Balancer
-gcloud compute addresses create apigee-external-ip --global --project=$PROJECT_ID
-APIGEE_IP=$(gcloud compute addresses describe apigee-external-ip \
-  --global --project=$PROJECT_ID --format='value(address)')
-APIGEE_HOST="${APIGEE_IP//./-}.nip.io"
-echo "IP: $APIGEE_IP  Host: $APIGEE_HOST"
-
-# Create environment group (nip.io provides wildcard DNS — no real DNS needed)
-curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/envgroups" \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d "{\"name\":\"llm-gateway-envgroup\",\"hostnames\":[\"$APIGEE_HOST\"]}"
-
-# Attach prod environment to the group
-curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/envgroups/llm-gateway-envgroup/attachments" \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"environment":"prod"}'
-
-# Attach the Apigee instance to prod (instance is typically "eval-instance")
-# Verify instance name first:
-curl -s "https://apigee.googleapis.com/v1/organizations/$ORG/instances" \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -c "import sys,json; [print('Instance:', i['name'].split('/')[-1], '| host:', i['host']) for i in json.load(sys.stdin).get('instances',[])]"
-
-curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/instances/eval-instance/attachments" \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"environment":"prod"}'
-# Poll returned operation until done (~2 min)
+source infra/apigee.env
+bash infra/05-create-environment.sh
 ```
 
-#### 1.6 Set up Global HTTPS Load Balancer (PSC NEG → Apigee)
+This script:
+1. Creates the `prod` environment
+2. Reserves a static external IP → `APIGEE_IP`, derives `APIGEE_HOST` (`${IP//./-}.nip.io`)
+3. Creates environment group `llm-gateway-envgroup` with that hostname
+4. Attaches `prod` to the group
+5. Attaches the Apigee eval-instance to `prod`
+
+> `nip.io` provides wildcard DNS for IP addresses — no real domain needed.
+
+After this step, update `infra/apigee.env` with `APIGEE_IP` and `APIGEE_HOST`.
+
+#### 1.6 Set up Global HTTPS Load Balancer
 
 ```bash
-TOKEN=$(gcloud auth print-access-token)
-
-# Get the Apigee instance's PSC service attachment URI
-SA=$(curl -s "https://apigee.googleapis.com/v1/organizations/$ORG/instances/eval-instance" \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['serviceAttachment'])")
-echo "Service Attachment: $SA"
-
-# 1. Create PSC Network Endpoint Group (connects LB to Apigee)
-gcloud compute network-endpoint-groups create apigee-neg \
-  --project=$PROJECT_ID \
-  --region=us-central1 \
-  --network-endpoint-type=private-service-connect \
-  --psc-target-service="$SA" \
-  --network=apigee-vpc \
-  --subnet=apigee-subnet
-
-# 2. Backend service
-gcloud compute backend-services create apigee-backend \
-  --project=$PROJECT_ID --global \
-  --load-balancing-scheme=EXTERNAL_MANAGED \
-  --protocol=HTTPS
-
-gcloud compute backend-services add-backend apigee-backend \
-  --project=$PROJECT_ID --global \
-  --network-endpoint-group=apigee-neg \
-  --network-endpoint-group-region=us-central1
-
-# 3. URL map
-gcloud compute url-maps create apigee-url-map \
-  --project=$PROJECT_ID \
-  --default-service=apigee-backend
-
-# 4. Google-managed SSL certificate (auto-provisioned; takes 10–15 min after first request)
-gcloud compute ssl-certificates create apigee-managed-cert \
-  --project=$PROJECT_ID \
-  --domains="$APIGEE_HOST" \
-  --global
-
-# 5. HTTPS target proxy
-gcloud compute target-https-proxies create apigee-https-proxy \
-  --project=$PROJECT_ID \
-  --url-map=apigee-url-map \
-  --ssl-certificates=apigee-managed-cert
-
-# 6. HTTPS forwarding rule (port 443)
-gcloud compute forwarding-rules create apigee-https-forwarding-rule \
-  --project=$PROJECT_ID --global \
-  --load-balancing-scheme=EXTERNAL_MANAGED \
-  --target-https-proxy=apigee-https-proxy \
-  --address=apigee-external-ip \
-  --ports=443
-
-# 7. HTTP → HTTPS redirect (port 80)
-gcloud compute url-maps import apigee-http-redirect \
-  --project=$PROJECT_ID --global << 'EOF'
-name: apigee-http-redirect
-defaultUrlRedirect:
-  redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
-  httpsRedirect: true
-EOF
-
-gcloud compute target-http-proxies create apigee-http-proxy \
-  --project=$PROJECT_ID --url-map=apigee-http-redirect --global
-
-gcloud compute forwarding-rules create apigee-http-forwarding-rule \
-  --project=$PROJECT_ID --global \
-  --load-balancing-scheme=EXTERNAL_MANAGED \
-  --target-http-proxy=apigee-http-proxy \
-  --address=apigee-external-ip \
-  --ports=80
-
-echo "Done. Endpoint: https://$APIGEE_HOST (SSL cert provisioning in background)"
+source infra/apigee.env
+bash infra/06-setup-load-balancer.sh
 ```
+
+This creates:
+- PSC Network Endpoint Group (LB → Apigee private service connect)
+- Backend service + URL map
+- Google-managed SSL certificate for `$APIGEE_HOST` (auto-provisioned; ~10–15 min after first HTTPS request)
+- HTTPS forwarding rule (port 443) + HTTP redirect (port 80)
+
+> **SSL cert provisioning:** The cert enters `PROVISIONING` state and becomes `ACTIVE` only after the first real HTTPS request reaches the LB. This can take 10–15 min. Monitor with:
+> ```bash
+> gcloud compute ssl-certificates describe apigee-managed-cert --global --format='value(managed.status)'
+> ```
 
 #### 1.7 Create Vertex AI Vector Search index and endpoint *(takes 15–20 min)*
 
@@ -541,7 +375,7 @@ OP=$(curl -s -X POST \
     "indexUpdateMethod": "STREAM_UPDATE"
   }')
 INDEX_ID=$(echo $OP | python3 -c "import sys,json; print(json.load(sys.stdin)['name'].split('/')[5])")
-OP_NAME=$(echo $OP | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
+OP_NAME=$(echo $OP  | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
 echo "Index ID: $INDEX_ID"
 
 # Poll until index creation finishes (~5 min)
@@ -561,14 +395,14 @@ EP_ID=$(echo $EP_OP | python3 -c "import sys,json; print(json.load(sys.stdin)['n
 EP_OP_NAME=$(echo $EP_OP | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
 echo "Endpoint ID: $EP_ID"
 
-# Poll until endpoint is ready (~1 min)
+# Poll until endpoint ready (~1 min)
 while true; do
   DONE=$(curl -s "${EP_OP_NAME}" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('done',False))")
   [ "$DONE" = "True" ] && break; sleep 15
 done
 
-# 3. Deploy index to endpoint (automaticResources — ~15 min)
+# 3. Deploy index to endpoint (automaticResources, ~15 min)
 DEPLOY_OP=$(curl -s -X POST \
   "https://${VS_REGION}-aiplatform.googleapis.com/v1/projects/$PROJECT_ID/locations/$VS_REGION/indexEndpoints/$EP_ID:deployIndex" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -581,7 +415,7 @@ DEPLOY_OP=$(curl -s -X POST \
     }
   }")
 DEPLOY_OP_NAME=$(echo $DEPLOY_OP | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
-echo "Deployment operation: $DEPLOY_OP_NAME"
+echo "Deploy operation: $DEPLOY_OP_NAME"
 
 # Poll deployment (~15 min)
 while true; do
@@ -592,7 +426,7 @@ while true; do
   [ "$DONE" = "True" ] && break; sleep 60
 done
 
-# 4. Get public endpoint domain (used in SharedFlow SC-VectorSearch URL)
+# 4. Get public endpoint domain
 VS_DOMAIN=$(curl -s \
   "https://${VS_REGION}-aiplatform.googleapis.com/v1/projects/$PROJECT_ID/locations/$VS_REGION/indexEndpoints/$EP_ID" \
   -H "Authorization: Bearer $TOKEN" \
@@ -600,7 +434,7 @@ VS_DOMAIN=$(curl -s \
 echo "VS Endpoint domain: $VS_DOMAIN"
 ```
 
-**Save all IDs** to `infra/apigee.env`:
+**Save all IDs to `infra/apigee.env`:**
 ```bash
 cat >> infra/apigee.env << EOF
 VECTOR_SEARCH_INDEX_ID=$INDEX_ID
@@ -610,6 +444,31 @@ VECTOR_SEARCH_ENDPOINT_DOMAIN=$VS_DOMAIN
 EOF
 ```
 
+#### 1.8 Run configure.sh to inject your IDs
+
+Now that all infrastructure IDs are known, run the configure script once:
+```bash
+source infra/apigee.env && bash infra/configure.sh
+```
+
+Expected output:
+```
+Configuring for:
+  PROJECT_ID     = your-project-id
+  PROJECT_NUMBER = 123456789012
+  VS_INDEX_ID    = 1234567890123456789
+  VS_ENDPOINT_ID = 9876543210987654321
+  VS_ENDPOINT    = xxxxxxx.us-central1-123456789012.vdb.vertexai.goog
+
+  configured: apigee/sharedflows/SemanticCache-Lookup/.../SC-GetEmbedding.xml
+  configured: apigee/sharedflows/SemanticCache-Lookup/.../SC-VectorSearch.xml
+  configured: apigee/sharedflows/SemanticCache-Populate/.../SC-GetEmbeddingPopulate.xml
+  configured: apigee/sharedflows/SemanticCache-Populate/.../SC-UpsertVector.xml
+  configured: apigee/proxies/llm-gateway/apiproxy/policies/ML-CloudLogging.xml
+  configured: apigee/proxies/llm-gateway/apiproxy/resources/jsc/model-router.js
+Done.
+```
+
 ---
 
 ### Phase 2 — API Key Authentication & Model Routing
@@ -617,41 +476,46 @@ EOF
 #### 2.1 Create Apigee service account with required IAM roles
 
 ```bash
+source infra/apigee.env
 SA_EMAIL="apigee-llm-sa@$PROJECT_ID.iam.gserviceaccount.com"
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 
+# Create SA
 gcloud iam service-accounts create apigee-llm-sa \
   --project=$PROJECT_ID \
   --display-name="Apigee LLM Gateway SA"
 
-# Vertex AI access on primary project (Gemini, Claude, MaaS)
+# Vertex AI access (Gemini, Claude, MaaS)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/aiplatform.user" --condition=None
 
-# Vertex AI access on cross-project (YOUR_CROSS_PROJECT_ID) for quota isolation routing
-gcloud projects add-iam-policy-binding YOUR_CROSS_PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/aiplatform.user" --condition=None
-
-# Cloud Logging write access
+# Cloud Logging write
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/logging.logWriter" --condition=None
 
-# Allow Apigee Service Agent to impersonate the SA
-# (required for Authentication.GoogleAccessToken in TargetEndpoint to work)
+# Allow Apigee Service Agent to impersonate this SA
+# (required for Authentication.GoogleAccessToken in TargetEndpoint)
 gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
   --project=$PROJECT_ID \
   --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-apigee.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountTokenCreator"
+
+# Optional: cross-project quota isolation
+# gcloud projects add-iam-policy-binding YOUR_CROSS_PROJECT_ID \
+#   --member="serviceAccount:$SA_EMAIL" \
+#   --role="roles/aiplatform.user" --condition=None
 ```
 
 #### 2.2 Create API Product, Developer, and App — extract API key
 
 ```bash
+source infra/apigee.env
 TOKEN=$(gcloud auth print-access-token)
+ORG=$APIGEE_ORG
 
-# API Product: proxies-based (not operationGroup) with 1000 req/min quota
+# API Product: 1000 req/min quota
 curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/apiproducts" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{
@@ -663,7 +527,10 @@ curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/apiproducts
     "quota": "1000",
     "quotaInterval": "1",
     "quotaTimeUnit": "minute",
-    "attributes": [{"name": "access", "value": "public"}]
+    "attributes": [
+      {"name": "access", "value": "public"},
+      {"name": "developer.token.quota.limit", "value": "1000000"}
+    ]
   }'
 
 # Developer
@@ -671,7 +538,7 @@ curl -s -X POST "https://apigee.googleapis.com/v1/organizations/$ORG/developers"
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"email":"demo@llm-gateway.internal","firstName":"Demo","lastName":"User","userName":"demo-user"}'
 
-# App — subscribes to the product; response contains the API key
+# App — response contains the API key
 APP=$(curl -s -X POST \
   "https://apigee.googleapis.com/v1/organizations/$ORG/developers/demo@llm-gateway.internal/apps" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -686,10 +553,11 @@ echo "Saved API key: ${API_KEY:0:20}..."
 #### 2.3 Deploy the llm-gateway proxy
 
 ```bash
+source infra/apigee.env
 TOKEN=$(gcloud auth print-access-token)
 SA_EMAIL="apigee-llm-sa@$PROJECT_ID.iam.gserviceaccount.com"
 
-# Package proxy bundle (ZIP must preserve apiproxy/ directory structure)
+# Package proxy bundle (zero directory entries required — use Python zipfile)
 cd apigee/proxies/llm-gateway
 python3 -c "
 import zipfile, pathlib
@@ -699,9 +567,9 @@ with zipfile.ZipFile('/tmp/llm-gateway.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
 print('Bundle:', sum(1 for _ in pathlib.Path('apiproxy').rglob('*') if _.is_file()), 'files')
 "
 
-# Upload with validation (validate=true rejects XML errors before deployment)
+# Upload with validation
 REV=$(curl -s -X POST \
-  "https://apigee.googleapis.com/v1/organizations/$ORG/apis?action=import&name=llm-gateway&validate=true" \
+  "https://apigee.googleapis.com/v1/organizations/$APIGEE_ORG/apis?action=import&name=llm-gateway&validate=true" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @/tmp/llm-gateway.zip \
@@ -710,17 +578,17 @@ REV=$(curl -s -X POST \
     if d.get('error') else print(d.get('revision','?'))")
 echo "Uploaded revision: $REV"
 
-# Deploy with the Apigee SA
+# Deploy with SA override
 curl -s -X POST \
-  "https://apigee.googleapis.com/v1/organizations/$ORG/environments/prod/apis/llm-gateway/revisions/$REV/deployments?override=true&serviceAccount=$SA_EMAIL" \
+  "https://apigee.googleapis.com/v1/organizations/$APIGEE_ORG/environments/prod/apis/llm-gateway/revisions/$REV/deployments?override=true&serviceAccount=$SA_EMAIL" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Length: 0" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print('Rev:', d.get('revision'))"
 
-# Wait for READY (polls every 10s, usually takes 45–60s)
+# Wait for READY (~45–60s)
 for i in $(seq 1 20); do
   sleep 10
   STATE=$(curl -s \
-    "https://apigee.googleapis.com/v1/organizations/$ORG/environments/prod/apis/llm-gateway/revisions/$REV/deployments" \
+    "https://apigee.googleapis.com/v1/organizations/$APIGEE_ORG/environments/prod/apis/llm-gateway/revisions/$REV/deployments" \
     -H "Authorization: Bearer $TOKEN" \
     | python3 -c "import sys,json; d=json.load(sys.stdin); \
       errs=[e['message'] for e in d.get('errors',[])][:1]; \
@@ -730,31 +598,23 @@ for i in $(seq 1 20); do
 done
 cd ../../..
 
-# Quick smoke tests
+# Smoke test
 source infra/api-key.env
-HOST=$(grep APIGEE_HOST infra/apigee.env | cut -d= -f2)
-
-curl -sk https://$HOST/v1/health
+curl -sk https://$APIGEE_HOST/v1/health
 # → {"status":"ok","service":"llm-gateway","version":"1.0.0"}
-
-curl -sk -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.0-flash-001","messages":[{"role":"user","content":"Hi!"}],"max_tokens":10}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['model'], '|', d['choices'][0]['message']['content'])"
-# → gemini-2.0-flash-001 | Hi there! ...
 ```
 
-**Key proxy source files** (all under `apigee/proxies/llm-gateway/apiproxy/`):
+**Key proxy source files** (under `apigee/proxies/llm-gateway/apiproxy/`):
 
 | File | Purpose |
 |------|---------|
-| `resources/jsc/detect-backend.js` | Sets `llm.backend` in ProxyEndpoint PreFlow **before** RouteRule evaluation |
+| `resources/jsc/detect-backend.js` | Sets `llm.backend` in ProxyEndpoint PreFlow (before RouteRule) |
 | `resources/jsc/model-router.js` | Full routing table; sets `target.url` in TargetEndpoint PreFlow |
-| `resources/jsc/request-normalizer.js` | Converts OpenAI → Gemini / Claude / MaaS / OpenCode format |
-| `resources/jsc/response-normalizer.js` | Converts all backends → OpenAI; handles `reasoning_content` for thinking models |
+| `resources/jsc/request-normalizer.js` | OpenAI → Gemini / Claude / MaaS / OpenCode format |
+| `resources/jsc/response-normalizer.js` | All backends → OpenAI; handles `reasoning_content`, `inlineData` |
 | `proxies/default.xml` | Flow orchestration: PreFlow, FaultRules (with embedded logging), RouteRules |
-| `targets/default.xml` | Vertex AI target: `GoogleAccessToken` auth, `copy.pathsuffix=false` |
-| `targets/opencode.xml` | OpenCode target: no auth, strips client `x-api-key` header |
+| `targets/default.xml` | Vertex AI target: `GoogleAccessToken` auth, `copy.pathsuffix=false`, `success.codes` |
+| `targets/opencode.xml` | OpenCode target: no auth, strips client headers |
 
 ---
 
@@ -763,13 +623,14 @@ curl -sk -X POST https://$HOST/v1/chat/completions \
 #### 3.1 Deploy SemanticCache-Lookup and SemanticCache-Populate
 
 ```bash
+source infra/apigee.env
 TOKEN=$(gcloud auth print-access-token)
 SA_EMAIL="apigee-llm-sa@$PROJECT_ID.iam.gserviceaccount.com"
 
 for SF in SemanticCache-Lookup SemanticCache-Populate; do
   echo "=== Deploying $SF ==="
 
-  # Package sharedflowbundle
+  # Package sharedflowbundle (must use Python zipfile, not zip CLI)
   python3 -c "
 import zipfile, pathlib, sys
 sf = sys.argv[1]
@@ -780,9 +641,8 @@ with zipfile.ZipFile(f'/tmp/{sf}.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
 print(f'{sf}: {sum(1 for _ in pathlib.Path(base).rglob(\"*\") if _.is_file())} files')
 " "$SF"
 
-  # Upload
   REV=$(curl -s -X POST \
-    "https://apigee.googleapis.com/v1/organizations/$ORG/sharedflows?action=import&name=$SF&validate=true" \
+    "https://apigee.googleapis.com/v1/organizations/$APIGEE_ORG/sharedflows?action=import&name=$SF&validate=true" \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/octet-stream" \
     --data-binary @/tmp/$SF.zip \
     | python3 -c "import sys,json; d=json.load(sys.stdin); \
@@ -790,17 +650,15 @@ print(f'{sf}: {sum(1 for _ in pathlib.Path(base).rglob(\"*\") if _.is_file())} f
       if d.get('error') else print(d.get('revision','?'))")
   echo "  Uploaded revision: $REV"
 
-  # Deploy
   curl -s -X POST \
-    "https://apigee.googleapis.com/v1/organizations/$ORG/environments/prod/sharedflows/$SF/revisions/$REV/deployments?override=true&serviceAccount=$SA_EMAIL" \
+    "https://apigee.googleapis.com/v1/organizations/$APIGEE_ORG/environments/prod/sharedflows/$SF/revisions/$REV/deployments?override=true&serviceAccount=$SA_EMAIL" \
     -H "Authorization: Bearer $TOKEN" -H "Content-Length: 0" | \
     python3 -c "import sys,json; d=json.load(sys.stdin); print('  Rev:', d.get('revision'))"
 
-  # Wait for READY
   for i in $(seq 1 10); do
     sleep 10
     STATE=$(curl -s \
-      "https://apigee.googleapis.com/v1/organizations/$ORG/environments/prod/sharedflows/$SF/revisions/$REV/deployments" \
+      "https://apigee.googleapis.com/v1/organizations/$APIGEE_ORG/environments/prod/sharedflows/$SF/revisions/$REV/deployments" \
       -H "Authorization: Bearer $TOKEN" \
       | python3 -c "import sys,json; print(json.load(sys.stdin).get('state','?'))")
     echo "  $(date +%H:%M:%S) $STATE"
@@ -809,37 +667,15 @@ print(f'{sf}: {sum(1 for _ in pathlib.Path(base).rglob(\"*\") if _.is_file())} f
 done
 ```
 
-#### 3.2 SharedFlow internals
-
-**SemanticCache-Lookup** (ProxyEndpoint PreFlow → Request):
-```
-JS-ExtractPrompt         extract last user message + model → cache key text
-SC-GetEmbedding          Vertex AI text-embedding-004 (768-dim)
-JS-BuildVsPayload        build findNeighbors request with deployed_index_id
-SC-VectorSearch          query Vector Search, similarity threshold 0.95
-JS-CheckCacheHit         parse response, set llm.cache.hit + llm.cache.key
-LC-LookupCache           Apigee distributed cache lookup by VS neighbor ID
-AM-CacheHitResponse      return cached response if both VS + Apigee cache hit
-```
-
-**SemanticCache-Populate** (ProxyEndpoint PreFlow → Response, MISS only):
-```
-JS-BuildCacheId          FNV-1a hash of "{model}:{prompt}" as cache key
-PC-PopulateCache         store normalized OpenAI response (TTL: 3600s)
-SC-GetEmbeddingPopulate  re-fetch embedding (template syntax, not Payload ref)
-JS-BuildUpsertPayload    build upsertDatapoints JSON with 768-dim vector
-SC-UpsertVector          upsert to Vector Search index
-```
-
-#### 3.3 Verify cache behavior
+#### 3.2 Verify cache behavior
 
 ```bash
-source infra/api-key.env
-HOST=$(grep APIGEE_HOST infra/apigee.env | cut -d= -f2)
-Q="What element has atomic number 79?"
+source infra/api-key.env infra/apigee.env
+HOST="https://$APIGEE_HOST"
+Q="What is the capital of France?"
 
-echo "--- Request 1: cold (MISS expected) ---"
-curl -sk -X POST https://$HOST/v1/chat/completions \
+# Request 1: cold MISS
+curl -sk -X POST $HOST/v1/chat/completions \
   -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"gemini-2.0-flash-001\",\"messages\":[{\"role\":\"user\",\"content\":\"$Q\"}],\"max_tokens\":50}" \
   -D - 2>/dev/null | grep "x-cache"
@@ -848,21 +684,23 @@ curl -sk -X POST https://$HOST/v1/chat/completions \
 echo "Waiting 70s for Vector Search stream update..."
 sleep 70
 
-echo "--- Request 2: same prompt (HIT expected) ---"
-curl -sk -X POST https://$HOST/v1/chat/completions \
+# Request 2: same prompt → HIT
+curl -sk -X POST $HOST/v1/chat/completions \
   -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
   -d "{\"model\":\"gemini-2.0-flash-001\",\"messages\":[{\"role\":\"user\",\"content\":\"$Q\"}],\"max_tokens\":50}" \
   -D - 2>/dev/null | grep -E "x-cache|x-cache-score"
 # x-cache: HIT
 # x-cache-score: 0.9999979...
 
-echo "--- Request 3: semantically similar (HIT expected) ---"
-curl -sk -X POST https://$HOST/v1/chat/completions \
+# Request 3: semantically similar → HIT
+curl -sk -X POST $HOST/v1/chat/completions \
   -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.0-flash-001","messages":[{"role":"user","content":"Which element has atomic number 79?"}],"max_tokens":50}' \
+  -d '{"model":"gemini-2.0-flash-001","messages":[{"role":"user","content":"Tell me the capital city of France."}],"max_tokens":50}' \
   -D - 2>/dev/null | grep -E "x-cache|x-cache-score"
-# x-cache: HIT  (semantic match)
+# x-cache: HIT  (semantic match, score ~0.9999980)
 ```
+
+> **Vector Search stream update delay:** Upserted vectors take ~60s to become queryable via `findNeighbors`.
 
 ---
 
@@ -873,144 +711,136 @@ curl -sk -X POST https://$HOST/v1/chat/completions \
 Three metrics extracted from `projects/YOUR_PROJECT_ID/logs/llm-gateway-requests`:
 
 ```bash
+source infra/apigee.env
 TOKEN=$(gcloud auth print-access-token)
-PROJECT=YOUR_PROJECT_ID
-LOG_FILTER='logName="projects/YOUR_PROJECT_ID/logs/llm-gateway-requests"'
 
-# ── 1. llm_request_count: every request, labeled by model / cache / status / backend / publisher ──
-curl -s -X POST "https://logging.googleapis.com/v2/projects/$PROJECT/metrics" \
+# llm_request_count — every request, labeled by model/cache/status/backend/publisher
+curl -s -X POST "https://logging.googleapis.com/v2/projects/$PROJECT_ID/metrics" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{
-    "name": "llm_request_count",
-    "description": "LLM Gateway requests by model, cache status, HTTP status, backend, publisher",
-    "filter": "logName=\"projects/YOUR_PROJECT_ID/logs/llm-gateway-requests\"",
-    "metricDescriptor": {
-      "metricKind": "DELTA", "valueType": "INT64", "unit": "1",
-      "labels": [
-        {"key": "model",        "valueType": "STRING"},
-        {"key": "cache_status", "valueType": "STRING"},
-        {"key": "status_code",  "valueType": "STRING"},
-        {"key": "backend",      "valueType": "STRING"},
-        {"key": "publisher",    "valueType": "STRING"}
+  -d "{
+    \"name\": \"llm_request_count\",
+    \"description\": \"LLM Gateway requests by model, cache status, HTTP status, backend, publisher\",
+    \"filter\": \"logName=\\\"projects/$PROJECT_ID/logs/llm-gateway-requests\\\"\",
+    \"metricDescriptor\": {
+      \"metricKind\": \"DELTA\", \"valueType\": \"INT64\", \"unit\": \"1\",
+      \"labels\": [
+        {\"key\": \"model\",        \"valueType\": \"STRING\"},
+        {\"key\": \"cache_status\", \"valueType\": \"STRING\"},
+        {\"key\": \"status_code\",  \"valueType\": \"STRING\"},
+        {\"key\": \"backend\",      \"valueType\": \"STRING\"},
+        {\"key\": \"publisher\",    \"valueType\": \"STRING\"}
       ]
     },
-    "labelExtractors": {
-      "model":        "EXTRACT(jsonPayload.modelRequested)",
-      "cache_status": "EXTRACT(jsonPayload.cacheStatus)",
-      "status_code":  "EXTRACT(jsonPayload.statusCode)",
-      "backend":      "EXTRACT(jsonPayload.backend)",
-      "publisher":    "EXTRACT(jsonPayload.publisher)"
+    \"labelExtractors\": {
+      \"model\":        \"EXTRACT(jsonPayload.modelRequested)\",
+      \"cache_status\": \"EXTRACT(jsonPayload.cacheStatus)\",
+      \"status_code\":  \"EXTRACT(jsonPayload.statusCode)\",
+      \"backend\":      \"EXTRACT(jsonPayload.backend)\",
+      \"publisher\":    \"EXTRACT(jsonPayload.publisher)\"
     }
-  }'
+  }"
 
-# ── 2. llm_error_count: 4xx/5xx only ──
-curl -s -X POST "https://logging.googleapis.com/v2/projects/$PROJECT/metrics" \
+# llm_error_count — 4xx/5xx only
+curl -s -X POST "https://logging.googleapis.com/v2/projects/$PROJECT_ID/metrics" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{
-    "name": "llm_error_count",
-    "description": "LLM Gateway 4xx/5xx errors by model and status code",
-    "filter": "logName=\"projects/YOUR_PROJECT_ID/logs/llm-gateway-requests\" AND jsonPayload.statusCode>=\"400\"",
-    "metricDescriptor": {
-      "metricKind": "DELTA", "valueType": "INT64", "unit": "1",
-      "labels": [
-        {"key": "model",       "valueType": "STRING"},
-        {"key": "status_code", "valueType": "STRING"},
-        {"key": "api_key_app", "valueType": "STRING"}
+  -d "{
+    \"name\": \"llm_error_count\",
+    \"description\": \"LLM Gateway 4xx/5xx errors\",
+    \"filter\": \"logName=\\\"projects/$PROJECT_ID/logs/llm-gateway-requests\\\" AND jsonPayload.statusCode>=\\\"400\\\"\",
+    \"metricDescriptor\": {
+      \"metricKind\": \"DELTA\", \"valueType\": \"INT64\", \"unit\": \"1\",
+      \"labels\": [
+        {\"key\": \"model\",       \"valueType\": \"STRING\"},
+        {\"key\": \"status_code\", \"valueType\": \"STRING\"},
+        {\"key\": \"api_key_app\", \"valueType\": \"STRING\"}
       ]
     },
-    "labelExtractors": {
-      "model":       "EXTRACT(jsonPayload.modelRequested)",
-      "status_code": "EXTRACT(jsonPayload.statusCode)",
-      "api_key_app": "EXTRACT(jsonPayload.apiKeyApp)"
+    \"labelExtractors\": {
+      \"model\":       \"EXTRACT(jsonPayload.modelRequested)\",
+      \"status_code\": \"EXTRACT(jsonPayload.statusCode)\",
+      \"api_key_app\": \"EXTRACT(jsonPayload.apiKeyApp)\"
     }
-  }'
+  }"
 
-# ── 3. llm_token_usage: distribution (MISS requests only — HITs consume no tokens) ──
-curl -s -X POST "https://logging.googleapis.com/v2/projects/$PROJECT/metrics" \
+# llm_token_usage — DISTRIBUTION, MISS requests only
+curl -s -X POST "https://logging.googleapis.com/v2/projects/$PROJECT_ID/metrics" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{
-    "name": "llm_token_usage",
-    "description": "Total tokens per request (cache MISS only)",
-    "filter": "logName=\"projects/YOUR_PROJECT_ID/logs/llm-gateway-requests\" AND jsonPayload.cacheStatus=\"MISS\"",
-    "metricDescriptor": {
-      "metricKind": "DELTA", "valueType": "DISTRIBUTION", "unit": "1",
-      "labels": [
-        {"key": "model",     "valueType": "STRING"},
-        {"key": "publisher", "valueType": "STRING"}
+  -d "{
+    \"name\": \"llm_token_usage\",
+    \"description\": \"Total tokens per request (cache MISS only)\",
+    \"filter\": \"logName=\\\"projects/$PROJECT_ID/logs/llm-gateway-requests\\\" AND jsonPayload.cacheStatus=\\\"MISS\\\"\",
+    \"metricDescriptor\": {
+      \"metricKind\": \"DELTA\", \"valueType\": \"DISTRIBUTION\", \"unit\": \"1\",
+      \"labels\": [
+        {\"key\": \"model\",     \"valueType\": \"STRING\"},
+        {\"key\": \"publisher\", \"valueType\": \"STRING\"}
       ]
     },
-    "valueExtractor": "EXTRACT(jsonPayload.totalTokens)",
-    "labelExtractors": {
-      "model":     "EXTRACT(jsonPayload.modelRequested)",
-      "publisher": "EXTRACT(jsonPayload.publisher)"
+    \"valueExtractor\": \"EXTRACT(jsonPayload.totalTokens)\",
+    \"labelExtractors\": {
+      \"model\":     \"EXTRACT(jsonPayload.modelRequested)\",
+      \"publisher\": \"EXTRACT(jsonPayload.publisher)\"
     },
-    "bucketOptions": {
-      "exponentialBuckets": {"numFiniteBuckets": 20, "growthFactor": 2, "scale": 1}
+    \"bucketOptions\": {
+      \"exponentialBuckets\": {\"numFiniteBuckets\": 20, \"growthFactor\": 2, \"scale\": 1}
     }
-  }'
+  }"
 ```
 
-> **Tip:** Use `apigee.googleapis.com/proxy/response_count` (Apigee native metric)
-> for HTTP status code charts — it captures 401/429 from FaultRules that never reach PostFlow logging.
-> The dashboard creation script (`monitoring/create-dashboard.py`) already uses this.
+> **Metric type note:** `llm_request_count` and `llm_error_count` are `DELTA` — use `ALIGN_DELTA` (not `ALIGN_RATE`) in Cloud Monitoring queries to get actual counts per interval.
+> `llm_token_usage` is `DELTA + DISTRIBUTION` — use `ALIGN_DELTA` + `distributionValue.mean`.
 
 #### 4.2 Create Cloud Monitoring dashboard
 
 ```bash
-# Creates 8-panel dashboard:
-#   - Request rate by model (log-based)
-#   - Cache HIT vs MISS (log-based)
-#   - HTTP response code rate — line chart (Apigee native, all status codes)
-#   - HTTP response code distribution — stacked bar (Apigee native)
-#   - Backend distribution: vertex vs opencode (log-based)
-#   - Publisher breakdown (log-based)
-#   - Token usage P99 (log-based, MISS only)
-#   - Apigee total request rate (Apigee native)
-python3 monitoring/create-dashboard.py --project YOUR_PROJECT_ID
-
-# Recreate later (replace old dashboard ID):
-# python3 monitoring/create-dashboard.py \
-#   --delete-existing 63bec4b8-2c05-405a-9d93-56bdda6649b8
+source infra/apigee.env
+python3 monitoring/create-dashboard.py --project $PROJECT_ID
 ```
 
-> **Dashboard filter trick:** Add `metric.labels.model!=""` (and similar `!=""` for other labels)
-> to exclude empty-label time series that accumulate from old log data before label extractors were added.
+Creates an 8-panel dashboard:
+- Request rate by model
+- Cache HIT vs MISS rate
+- HTTP response code rate (line) + distribution (stacked bar)
+- Backend distribution (vertex vs opencode)
+- Publisher breakdown
+- Token usage P99 (MISS only)
+- Apigee total request rate (native metric)
 
 #### 4.3 Create alerting policies
 
 ```bash
+source infra/apigee.env
 TOKEN=$(gcloud auth print-access-token)
-PROJECT=YOUR_PROJECT_ID
 
-# Create email notification channel (replace YOUR_EMAIL)
+# Create email notification channel
 NC=$(curl -s -X POST \
-  "https://monitoring.googleapis.com/v3/projects/$PROJECT/notificationChannels" \
+  "https://monitoring.googleapis.com/v3/projects/$PROJECT_ID/notificationChannels" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"email","displayName":"LLM Gateway Alerts",
-       "labels":{"email_address":"YOUR_EMAIL@example.com"},"enabled":true}')
+  -d "{\"type\":\"email\",\"displayName\":\"LLM Gateway Alerts\",
+       \"labels\":{\"email_address\":\"YOUR_EMAIL@example.com\"},\"enabled\":true}")
 NC_NAME=$(echo $NC | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
 echo "Notification channel: $NC_NAME"
 ```
 
+Then create three alert policies (paste into Python REPL or save as a script):
 ```python
-# Run as: python3 create-alerts.py (or paste into Python REPL)
 import json, urllib.request, subprocess
 
-token = subprocess.check_output(["gcloud","auth","print-access-token"]).decode().strip()
+token   = subprocess.check_output(["gcloud","auth","print-access-token"]).decode().strip()
 project = "YOUR_PROJECT_ID"
-nc_name = "<NC_NAME from above>"   # e.g. "projects/YOUR_PROJECT_ID/notificationChannels/..."
+nc_name = "<NC_NAME from above>"
 base_url = f"https://monitoring.googleapis.com/v3/projects/{project}/alertPolicies"
-headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+headers  = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 def create_alert(body):
     req = urllib.request.Request(base_url, json.dumps(body).encode(), headers, method="POST")
     with urllib.request.urlopen(req) as r:
         print("Created:", json.loads(r.read())["displayName"])
 
-# Alert 1: High error rate — > 0.05 errors/s sustained over 5 min
+# Alert 1: High error rate > 5% (>0.05 errors/s over 5 min)
 create_alert({
     "displayName": "LLM Gateway — High Error Rate (>5%)",
-    "conditions": [{"displayName": "Error rate > 0.05 req/s over 5 min",
+    "conditions": [{"displayName": "Error rate > 0.05/s over 5 min",
         "conditionThreshold": {
             "filter": 'metric.type="logging.googleapis.com/user/llm_error_count" resource.type="global"',
             "aggregations": [{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_RATE",
@@ -1021,10 +851,10 @@ create_alert({
     "notificationChannels": [nc_name]
 })
 
-# Alert 2: High request rate — approaching 500 rpm quota
+# Alert 2: High request rate > 500 rpm
 create_alert({
     "displayName": "LLM Gateway — High Request Rate (>500 rpm)",
-    "conditions": [{"displayName": "Request rate > 8.33 req/s (500 rpm) over 2 min",
+    "conditions": [{"displayName": "Request rate > 8.33/s (500 rpm) over 2 min",
         "conditionThreshold": {
             "filter": 'metric.type="logging.googleapis.com/user/llm_request_count" resource.type="global"',
             "aggregations": [{"alignmentPeriod": "120s", "perSeriesAligner": "ALIGN_RATE",
@@ -1035,10 +865,10 @@ create_alert({
     "notificationChannels": [nc_name]
 })
 
-# Alert 3: Cache not working — no HITs for 30 min (only fires if traffic > 0)
+# Alert 3: No cache HITs for 30 min
 create_alert({
     "displayName": "LLM Gateway — Low Cache Hit Rate (<20%)",
-    "conditions": [{"displayName": "No cache HIT requests in 30-min window",
+    "conditions": [{"displayName": "No cache HIT in 30-min window",
         "conditionAbsent": {
             "filter": 'metric.type="logging.googleapis.com/user/llm_request_count" resource.type="global" metric.labels.cache_status="HIT"',
             "aggregations": [{"alignmentPeriod": "1800s", "perSeriesAligner": "ALIGN_SUM",
@@ -1052,138 +882,305 @@ create_alert({
 
 ---
 
-### Phase 5 — Testing
-
-The test suite covers all four backend endpoints, semantic cache behavior, auth enforcement,
-and observability. It runs as a single self-contained shell script (~3 min total, including
-70 s for Vector Search stream propagation in the cache test).
+### Phase 5 — Test Suite
 
 ```bash
 # Prerequisites
 source infra/api-key.env   # sets API_KEY
-source infra/apigee.env    # sets APIGEE_HOST
+source infra/apigee.env    # sets APIGEE_HOST, PROJECT_ID
 
-# Run full suite
+# Run full suite (~3 min including 70s Vector Search wait)
 bash tests/run-tests.sh
 ```
 
-**Expected result: ~71 passed / 0 failed / ~4 skipped**
-(skipped = quota exhaustion on some MaaS/Claude/Gemini models during streaming/image sections)
+**Expected result: ~71 passed / 0 failed / ~4 skipped** (quota exhaustion on some MaaS models)
 
-**Test sections and what they verify:**
-
-| # | Section | Verifies |
-|---|---------|---------|
+| # | Section | What it verifies |
+|---|---------|-----------------|
 | 1 | Health Check | `GET /v1/health` → 200, `status=ok` |
 | 2 | Authentication | No key → 401, bad key → 401, valid key → 200 |
-| 3 | Response Format | `object`, `id`, `choices[0].message.content`, `usage.total_tokens` all present |
-| 4 | Endpoint A — Gemini | 4 standard + 5 thinking models (9 total) |
-| 5 | Endpoint B — Claude | 5 Claude models respond with non-empty content |
-| 6 | Endpoint C — MaaS | 10 partner models via OpenAPI endpoint: GLM, DeepSeek, Kimi, MiniMax, Qwen |
-| 7 | Cross-project routing | `YOUR_CROSS_PROJECT_ID/gemini-2.5-flash` and `YOUR_CROSS_PROJECT_ID/gemini-3-flash-preview` |
-| 8 | Endpoint D — OpenCode | 5 free models (some may be rate-limited by platform) |
+| 3 | Response Format | `object`, `id`, `choices[].message.content`, `usage.total_tokens` |
+| 4 | Endpoint A — Gemini | 4 standard + 5 thinking models |
+| 5 | Endpoint B — Claude | 5 Claude models, non-empty content |
+| 6 | Endpoint C — MaaS | 10 partner models: GLM, DeepSeek, Kimi, MiniMax, Qwen |
+| 7 | Cross-project routing | `CROSS_PROJECT_ID/gemini-2.5-flash`, `gemini-3-flash-preview` |
+| 8 | Endpoint D — OpenCode | 5 free models (may rate-limit by platform) |
 | 9 | Default fallback | Unknown model → `gemini-2.0-flash-001` |
-| 10 | Format normalization | System prompt, temperature, MaaS model field rewrite, `reasoning_content` → `content` |
-| 11 | Semantic cache | MISS → (70s wait) → HIT → semantic HIT → cross-model MISS |
-| 12 | Cloud Logging | Log entries present, required fields (`requestId`, `statusCode`, `cacheStatus`, etc.) |
-| 13 | Token Quota | `usage.*` fields, `effectiveTokens` in logs, 429 on limit, bypass for OpenCode |
-| 14 | Image Generation | `gemini-2.5-flash-image` + `gemini-3.1-flash-image-preview` → content array with `image_url`; cache bypass confirmed |
-| 15 | Streaming | `stream:true` → `text/event-stream` + SSE chunks; Gemini/Claude/MaaS/OpenCode; no `x-cache` header |
+| 10 | Format normalization | System prompt, temperature, `reasoning_content` → `content` |
+| 11 | Semantic cache | MISS → 70s wait → HIT → semantic HIT → cross-model MISS |
+| 12 | Cloud Logging | Log entries present, all required fields |
+| 13 | Token Quota | `usage.*` fields, `effectiveTokens` in logs, 429 on limit, OpenCode bypass |
+| 14 | Image Generation | `gemini-2.5-flash-image` + `gemini-3.1-flash-image-preview` → `image_url`; cache bypass |
+| 15 | Streaming | `stream:true` → `text/event-stream`; Gemini/Claude/MaaS/OpenCode; no `x-cache` |
 
-**Quick individual tests:**
+---
+
+### Phase 6 — Admin UI (Cloud Run + IAP)
+
+A Next.js 15 management console providing API key management, quota configuration, request logs, and a live dashboard.
+
+#### 6.1 Prerequisites
+
 ```bash
-source infra/api-key.env
-HOST=$(grep APIGEE_HOST infra/apigee.env | cut -d= -f2)
+source infra/apigee.env
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 
-# Health
-curl -sk https://$HOST/v1/health
-
-# Auth rejection
-curl -sk -o /dev/null -w "No key: HTTP %{http_code}\n" \
-  -X POST https://$HOST/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.0-flash-001","messages":[{"role":"user","content":"hi"}]}'
-
-# Gemini 2.5 Flash (Endpoint A)
-curl -sk -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"Say HELLO."}],"max_tokens":20}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['model'],'|',d['choices'][0]['message']['content'])"
-
-# GLM-5 via Vertex AI OpenAPI endpoint (Endpoint C)
-curl -sk -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"glm-5","messages":[{"role":"user","content":"Say HELLO."}],"max_tokens":100}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['model'],'|',d['choices'][0]['message']['content'])"
-# model field shows backend name: "zai-org/glm-5-maas"
-
-# Cross-project routing (YOUR_CROSS_PROJECT_ID quota pool)
-curl -sk -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"YOUR_CROSS_PROJECT_ID/gemini-2.5-pro","messages":[{"role":"user","content":"hi"}],"max_tokens":10}' \
-  -D - | grep -E "HTTP|x-llm-project"
-# x-llm-project: YOUR_CROSS_PROJECT_ID
-
-# Free OpenCode model ($0 cost)
-curl -sk -X POST https://$HOST/v1/chat/completions \
-  -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"opencode/big-pickle","messages":[{"role":"user","content":"Say HELLO."}],"max_tokens":100}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['model'],'|',d['choices'][0]['message']['content'])"
+# Enable additional APIs
+gcloud services enable \
+  run.googleapis.com \
+  iap.googleapis.com \
+  artifactregistry.googleapis.com \
+  --project=$PROJECT_ID
 ```
 
+#### 6.2 Grant additional IAM roles to Apigee SA
 
+The Admin UI uses the same SA (`apigee-llm-sa`) to call Apigee Management API, Cloud Logging, and Cloud Monitoring.
+
+```bash
+SA_EMAIL="apigee-llm-sa@$PROJECT_ID.iam.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/apigee.developerAdmin" --condition=None
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/apigee.apiAdminV2" --condition=None
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/logging.viewer" --condition=None
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/monitoring.viewer" --condition=None
+```
+
+#### 6.3 Create Artifact Registry repository
+
+```bash
+gcloud artifacts repositories create llm-gateway \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=$PROJECT_ID
+
+gcloud auth configure-docker us-central1-docker.pkg.dev
+```
+
+#### 6.4 Build and push the Admin UI image
+
+```bash
+cd ui
+docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/llm-gateway/admin-ui:latest .
+docker push us-central1-docker.pkg.dev/$PROJECT_ID/llm-gateway/admin-ui:latest
+cd ..
+```
+
+#### 6.5 Deploy to Cloud Run
+
+```bash
+gcloud run deploy llm-gateway-ui \
+  --image=us-central1-docker.pkg.dev/$PROJECT_ID/llm-gateway/admin-ui:latest \
+  --region=us-central1 \
+  --project=$PROJECT_ID \
+  --service-account=apigee-llm-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,APIGEE_ORG=$PROJECT_ID" \
+  --no-allow-unauthenticated \
+  --ingress=internal-and-cloud-load-balancing \
+  --min-instances=0 \
+  --max-instances=3
+
+# Get the Cloud Run service URL
+CR_URL=$(gcloud run services describe llm-gateway-ui \
+  --region=us-central1 --project=$PROJECT_ID \
+  --format='value(status.url)')
+echo "Cloud Run URL: $CR_URL"
+```
+
+> `--no-allow-unauthenticated` ensures Cloud Run itself rejects unauthenticated requests.
+> `--ingress=internal-and-cloud-load-balancing` means only internal and LB traffic reaches it.
+
+#### 6.6 Set up HTTPS Load Balancer for Admin UI
+
+```bash
+# Reserve a static IP for the UI
+gcloud compute addresses create llm-gateway-ui-ip \
+  --global --project=$PROJECT_ID
+UI_IP=$(gcloud compute addresses describe llm-gateway-ui-ip \
+  --global --project=$PROJECT_ID --format='value(address)')
+UI_HOST="${UI_IP//./-}.nip.io"
+echo "UI IP: $UI_IP  Host: $UI_HOST"
+
+# Serverless NEG pointing at Cloud Run
+gcloud compute network-endpoint-groups create llm-gateway-ui-neg \
+  --region=us-central1 \
+  --network-endpoint-type=serverless \
+  --cloud-run-service=llm-gateway-ui \
+  --project=$PROJECT_ID
+
+# Backend service
+gcloud compute backend-services create llm-gateway-ui-backend \
+  --global --load-balancing-scheme=EXTERNAL_MANAGED \
+  --protocol=HTTPS --project=$PROJECT_ID
+
+gcloud compute backend-services add-backend llm-gateway-ui-backend \
+  --global \
+  --network-endpoint-group=llm-gateway-ui-neg \
+  --network-endpoint-group-region=us-central1 \
+  --project=$PROJECT_ID
+
+# URL map
+gcloud compute url-maps create llm-gateway-ui-urlmap \
+  --default-service=llm-gateway-ui-backend --project=$PROJECT_ID
+
+# SSL cert
+gcloud compute ssl-certificates create llm-gateway-ui-cert \
+  --domains="$UI_HOST" --global --project=$PROJECT_ID
+
+# HTTPS target proxy
+gcloud compute target-https-proxies create llm-gateway-ui-https-proxy \
+  --url-map=llm-gateway-ui-urlmap \
+  --ssl-certificates=llm-gateway-ui-cert --project=$PROJECT_ID
+
+# Forwarding rule
+gcloud compute forwarding-rules create llm-gateway-ui-https-rule \
+  --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --target-https-proxy=llm-gateway-ui-https-proxy \
+  --address=llm-gateway-ui-ip \
+  --ports=443 --project=$PROJECT_ID
+
+echo "Admin UI will be available at: https://$UI_HOST (after SSL cert provisions)"
+```
+
+#### 6.7 Enable IAP on the backend
+
+```bash
+# Enable IAP for OAuth (creates a brand if it doesn't exist)
+gcloud iap web enable \
+  --resource-type=backend-services \
+  --service=llm-gateway-ui-backend \
+  --project=$PROJECT_ID
+
+# Grant access to specific users (add more with the same command)
+gcloud iap web add-iam-policy-binding \
+  --resource-type=backend-services \
+  --service=llm-gateway-ui-backend \
+  --member="user:YOUR_EMAIL@example.com" \
+  --role="roles/iap.httpsResourceAccessor" \
+  --project=$PROJECT_ID
+```
+
+> **First-time OAuth setup:** When enabling IAP for the first time, GCP may prompt you to configure an OAuth consent screen in the Cloud Console. Go to **APIs & Services → OAuth consent screen**, set it to Internal, then re-run the `gcloud iap web enable` command.
+
+#### 6.8 Verify Admin UI
+
+```bash
+# Check SSL cert status
+gcloud compute ssl-certificates describe llm-gateway-ui-cert \
+  --global --project=$PROJECT_ID \
+  --format='value(managed.status)'
+# Wait for: ACTIVE (takes 10–15 min after first HTTPS request)
+
+# Test (will redirect to Google login if IAP is enforced)
+curl -k https://$UI_HOST/
+```
+
+Open `https://$UI_HOST` in a browser — you'll be redirected to Google Sign-In.
+
+#### 6.9 Redeploy Admin UI (after code changes)
+
+```bash
+cd ui
+docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/llm-gateway/admin-ui:latest .
+docker push us-central1-docker.pkg.dev/$PROJECT_ID/llm-gateway/admin-ui:latest
+gcloud run deploy llm-gateway-ui \
+  --image=us-central1-docker.pkg.dev/$PROJECT_ID/llm-gateway/admin-ui:latest \
+  --region=us-central1 --project=$PROJECT_ID
+cd ..
+```
+
+---
+
+## Semantic Cache — Deep Dive
+
+```
+Request
+  └─ Extract last user message + model → cache key text
+       └─ Embed (text-embedding-004, 768-dim)
+            └─ Vector Search findNeighbors (threshold: 0.95)
+                 ├─ HIT  → LookupCache by neighbor datapointId → return response
+                 │           (x-cache: HIT, x-cache-score: <similarity>)
+                 └─ MISS → call LLM backend → normalize to OpenAI format
+                              └─ Store in Apigee cache (key: FNV-1a hash, TTL: 3600s)
+                                   └─ Embed again → upsert vector to VS index
+                                        (queryable after ~60s stream update)
+```
+
+**Cache key:** `FNV-1a("{model}:{prompt_text}")` — model-scoped, prevents cross-model collisions
+
+**Bypassed when:**
+- `stream: true` (streaming requests)
+- Image models (response payload ~1MB+)
+- `llm.completion_tokens = 0` (empty LLM response, prevents caching bad state)
+
+**Similarity results:**
+| Prompt | Similarity | Result |
+|--------|------------|--------|
+| Same prompt (exact) | ~0.9999979 | HIT |
+| Semantically similar paraphrase | ~0.9999980 | HIT |
+| Same question, different model | Different key | MISS |
+
+---
 
 ## Repository Structure
 
 ```
 llm-apigee/
+├── CLAUDE.md                            # Full architecture reference & Apigee lessons
 ├── README.md
-├── CLAUDE.md                           # Full architecture reference & lessons learned
 ├── infra/
-│   ├── 02-provision-apigee.sh         # Apigee X provisioning commands
-│   ├── 06-setup-load-balancer.sh      # PSC NEG + HTTPS LB setup
-│   ├── apigee.env                     # Apigee config (host, org, env, VS IDs)
-│   └── api-key.env                    # API key (API_KEY=...) — gitignored
+│   ├── 01-enable-apis.sh               # Enable all required GCP APIs
+│   ├── 02-provision-apigee.sh          # Provision Apigee X organization (async)
+│   ├── 05-create-environment.sh        # Create prod env, envgroup, attach instance
+│   ├── 06-setup-load-balancer.sh       # PSC NEG + HTTPS LB for gateway
+│   ├── configure.sh                    # Substitute YOUR_* placeholders with real IDs
+│   ├── poll-apigee-provision.sh        # Poll Apigee provision operation
+│   ├── apigee.env.example              # Copy to apigee.env and fill in your values
+│   └── api-key.env                     # Generated API key — gitignored
 ├── apigee/
 │   ├── proxies/llm-gateway/apiproxy/
-│   │   ├── proxies/default.xml        # Flow orchestration (PreFlow, FaultRules, RouteRules)
-│   │   ├── targets/default.xml        # Vertex AI target (GoogleAccessToken, copy.pathsuffix=false)
-│   │   ├── targets/opencode.xml       # OpenCode target (no auth, strip headers)
-│   │   ├── policies/                  # 18 policies (VA, QU, EV, JS, AM, ML, FC)
+│   │   ├── proxies/default.xml         # Flow orchestration, FaultRules, RouteRules
+│   │   ├── targets/default.xml         # Vertex AI: GoogleAccessToken, success.codes
+│   │   ├── targets/opencode.xml        # OpenCode: no auth, strip x-api-key
+│   │   ├── policies/                   # 18 policies (VA, QU, EV, JS, AM, ML, FC)
 │   │   └── resources/jsc/
-│   │       ├── model-router.js        # Routing table → target.url + metadata
-│   │       ├── request-normalizer.js  # OpenAI → Gemini/Claude/MaaS format
-│   │       ├── response-normalizer.js # All backends → OpenAI (handles reasoning_content)
-│   │       └── detect-backend.js      # Set llm.backend before RouteRule
+│   │       ├── model-router.js         # Routing table → target.url + metadata
+│   │       ├── request-normalizer.js   # OpenAI → Gemini/Claude/MaaS/OpenCode
+│   │       ├── response-normalizer.js  # All backends → OpenAI (reasoning_content, inlineData)
+│   │       ├── detect-backend.js       # Set llm.backend before RouteRule
+│   │       ├── detect-streaming.js     # Set llm.streaming before cache lookup
+│   │       ├── compute-effective-tokens.js  # Token quota weight calculation
+│   │       ├── compute-latency.js      # totalLatencyMs / targetLatencyMs
+│   │       └── resolve-token-quota.js  # App override > Product default
 │   └── sharedflows/
-│       ├── SemanticCache-Lookup/      # Embed → Vector Search → cache lookup
-│       └── SemanticCache-Populate/    # Store response + upsert vector
+│       ├── SemanticCache-Lookup/       # Embed → Vector Search → Apigee cache lookup
+│       └── SemanticCache-Populate/     # Store response + upsert vector
 ├── monitoring/
-│   └── create-dashboard.py           # Recreate Cloud Monitoring dashboard
-└── tests/
-    └── run-tests.sh                   # 75 tests across 15 sections
-```
-
----
-
-## Admin UI
-
-A Next.js 15 management console deployed on Cloud Run, protected by Google IAP.
-
-| URL | `https://YOUR_UI_LB_IP.nip.io` |
-|-----|------|
-| Auth | IAP (Google login) |
-| Pages | Dashboard (request/token/cache metrics), API Keys, Quota config |
-| Stack | Next.js 15.2.3, React 19, shadcn/ui, Recharts, TypeScript |
-
-**Redeploy:**
-```bash
-cd ui
-docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/llm-gateway/admin-ui:latest .
-docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/llm-gateway/admin-ui:latest
-gcloud run deploy llm-gateway-ui \
-  --image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/llm-gateway/admin-ui:latest \
-  --region us-central1 --project YOUR_PROJECT_ID --no-allow-unauthenticated
+│   └── create-dashboard.py            # Recreate Cloud Monitoring dashboard
+├── tests/
+│   ├── run-tests.sh                   # 75 tests across 15 sections
+│   └── test-kvm-routing.sh            # KVM dynamic routing tests
+├── ui/                                # Next.js 15 Admin UI
+│   ├── app/                           # Page and API route handlers
+│   ├── components/                    # React components (dashboard, keys, quota)
+│   ├── lib/                           # GCP SDK clients (Apigee, Logging, Monitoring)
+│   ├── Dockerfile
+│   └── package.json                   # next: "15.2.3" (CVE-2025-29927 patched)
+└── docs/
+    ├── architecture.html              # Interactive architecture diagram
+    └── architecture.png
 ```
 
 ---
@@ -1194,35 +1191,37 @@ gcloud run deploy llm-gateway-ui \
 |-----------|------|-------------|
 | Apigee X | eval org (CLOUD runtime) | $0 (trial) / $1,000+ (production) |
 | Vector Search | 1 node, automaticResources | ~$65–$110 |
-| Global HTTPS LB | 2 forwarding rules | ~$36 |
+| Global HTTPS LB | 2 forwarding rules (gateway) + 2 (UI) | ~$72 |
 | Cloud Logging | < 50 GiB/month | $0 (free tier) |
 | text-embedding-004 | ~$0.025 per 1M chars | ~$0.015–$0.05 per 1M requests |
-| **Total (eval)** | | **~$100–$145/month** |
+| Cloud Run (Admin UI) | min-instances=0, pay per request | ~$0–$5 |
+| **Total (eval)** | | **~$140–$185/month** |
 
-OpenCode Zen models: **$0** — no token cost.
+OpenCode Zen models: **$0** — no token cost, no quota deduction.
+
+**Semantic cache savings:** At 50% hit rate, roughly halves model token costs for repeated queries (FAQ, knowledge base, fixed templates).
 
 ---
 
 ## Key Lessons Learned
 
 1. **`target.url` must be set in TargetEndpoint PreFlow**, not ProxyEndpoint PreFlow — the latter is silently ignored.
-2. **`copy.pathsuffix=false`** prevents the proxy path suffix (`/chat/completions`) from being appended to `target.url`.
-3. **`<Payload ref="var"/>`** in ServiceCallout sends an empty body — use template syntax `<Payload>{var}</Payload>`.
+2. **`copy.pathsuffix=false`** in `HTTPTargetConnection` prevents Apigee from appending `/chat/completions` to `target.url`.
+3. **`<Payload ref="var"/>`** in ServiceCallout sends an empty body — use template syntax `<Payload contentType="application/json">{var}</Payload>`.
 4. Use **`lookupcache.LC-LookupCache.cachehit`** (not `llm.cache.hit`) as the true full-hit condition. VS similarity alone doesn't guarantee the Apigee cache has the entry.
 5. **RouteRule is evaluated before TargetEndpoint PreFlow** — backend detection must happen in ProxyEndpoint PreFlow (`JS-DetectBackend`).
 6. **FaultRule PostFlow does not run** — add `ML-CloudLogging` inside each FaultRule; set status code explicitly since `response.status.code` is empty in fault context.
-7. **Vertex AI OpenAPI endpoint** (`/endpoints/openapi/chat/completions`) unifies all MaaS partner models with OpenAI-compatible format and higher success rate than individual `rawPredict` endpoints.
+7. **Vertex AI OpenAPI endpoint** (`/endpoints/openapi/chat/completions`) unifies all MaaS partner models with OpenAI-compatible format.
 8. **Thinking models** (GLM-5, Kimi, MiniMax, Qwen-thinking, Gemini 2.5 Pro, Gemini 3-flash) return `reasoning_content` instead of `content` — normalize in response-normalizer.js.
-9. **Vector Search `findNeighbors`** requires `"deployed_index_id"` in the request body.
-10. **OpenCode Zen** free models need a separate TargetEndpoint (no auth) with explicit stripping of the client's `x-api-key` header.
-11. **Streaming in Apigee X requires skipping ALL response-side policies** — any JavaScript or AssignMessage policy in the ProxyEndpoint response PreFlow or PostFlow causes full buffering, breaking SSE passthrough. Skip everything (`JS-ResponseNormalizer`, `AM-AddObsHeaders`, `JS-ComputeLatency`, `ML-CloudLogging`) for `stream:true` requests.
-12. **Gemini streaming uses `streamGenerateContent?alt=sse`** — without `?alt=sse`, the response is a JSON array (not SSE). Keep `llm.action = "generateContent"` for request-normalizer logic; `?alt=sse` is URL-only.
-13. **Image generation models** require `responseModalities: ["TEXT","IMAGE"]` in `generationConfig` — without it, the model returns text only. Inject automatically in request-normalizer.js based on `llm.resolved_model`.
-14. **Image responses contain `inlineData` parts** — response-normalizer.js must convert these to OpenAI content array format (`type: "image_url"`, `url: "data:image/png;base64,..."`) instead of joining as plain text.
-15. **Do not cache image responses** — payloads are ~1MB+. Set `llm.has_image = "true"` in response-normalizer.js and exclude in `FC-SemanticCachePopulate` condition.
-16. **`success.codes` is required to normalize backend 4xx/5xx errors** — by default Apigee X does NOT run ProxyEndpoint response PreFlow for backend error responses. Add `<Property name="success.codes">1xx,2xx,3xx,4xx,5xx</Property>` to `HTTPTargetConnection` in both TargetEndpoints so JS-ResponseNormalizer can normalize backend errors.
-17. **`AssignMessage createNew="true"` does not work in FaultRules on Apigee X** — it creates a new message object but Apigee X sends the original fault message. Remove `createNew="true"` so AssignMessage modifies the existing fault response in-place.
-18. **All errors should carry `error.source`** — add `"source":"gateway"` to every Apigee-generated error payload (AM-AuthError, AM-QuotaError, AM-TokenQuotaError); normalize backend errors with `"source":"model"` in JS-ResponseNormalizer `statusCode >= 400` branch.
+9. **`deployed_index_id`** is required in the Vector Search `findNeighbors` request body.
+10. **Streaming requires skipping ALL response-side policies** — any JS or AssignMessage in the ProxyEndpoint response PreFlow or PostFlow causes full buffering, breaking SSE. Skip with `AND NOT (llm.streaming = "true")` condition.
+11. **Gemini streaming uses `streamGenerateContent?alt=sse`** — without `?alt=sse`, the response is a JSON array, not SSE. Keep `llm.action = "generateContent"` for request-normalizer; `?alt=sse` is URL-only.
+12. **Image models require `responseModalities: ["TEXT","IMAGE"]`** in `generationConfig` — inject automatically in request-normalizer.js based on `llm.resolved_model`.
+13. **`success.codes` is required to normalize backend errors** — by default Apigee X skips ProxyEndpoint response PreFlow for backend 4xx/5xx. Add `<Property name="success.codes">1xx,2xx,3xx,4xx,5xx</Property>` to both TargetEndpoints.
+14. **`AssignMessage createNew="true"` is broken in FaultRules on Apigee X** — it creates a new message but Apigee sends the original fault. Remove `createNew="true"` to modify the fault in-place.
+15. **Apigee product attribute batch writes** — `PUT /apiproducts/{product}/attributes/{attr}` returns 404 if the attribute doesn't exist. Use `POST /apiproducts/{product}/attributes` to batch-write all attributes. Never call setProductAttribute in parallel (race condition — each reads stale state and overwrites).
+16. **Gemini 2.5/3.x thinking tokens** count against `maxOutputTokens` budget. With `max_tokens=30`, thinking may exhaust the full budget → empty content. Set `thinkingConfig.thinkingBudget=0` to disable thinking (e.g., for programmatic tasks like JSON generation).
+17. **Zip bundles must use `zipfile.writestr()`** — the `zip` CLI includes directory entries that Apigee rejects. Use Python `zipfile` to write file-by-file.
 
 ---
 
@@ -1230,9 +1229,9 @@ OpenCode Zen models: **$0** — no token cost.
 
 | Resource | URL |
 |----------|-----|
-| External endpoint | `https://YOUR_LB_IP.nip.io/v1/chat/completions` |
+| Gateway endpoint | `https://YOUR_LB_IP.nip.io/v1/chat/completions` |
 | Health check | `https://YOUR_LB_IP.nip.io/v1/health` |
 | Admin UI | `https://YOUR_UI_LB_IP.nip.io` (IAP login required) |
-| Cloud Monitoring dashboard | [Open dashboard](https://console.cloud.google.com/monitoring/dashboards/custom/63bec4b8-2c05-405a-9d93-56bdda6649b8?project=YOUR_PROJECT_ID) |
-| Apigee console | [Open Apigee](https://console.cloud.google.com/apigee/overview?project=YOUR_PROJECT_ID) |
-| Cloud Logging | [Open logs](https://console.cloud.google.com/logs/query;query=logName%3D%22projects%2FYOUR_PROJECT_ID%2Flogs%2Fllm-gateway-requests%22?project=YOUR_PROJECT_ID) |
+| Apigee console | [console.cloud.google.com/apigee](https://console.cloud.google.com/apigee) |
+| Vertex AI Model Garden | [console.cloud.google.com/vertex-ai/model-garden](https://console.cloud.google.com/vertex-ai/model-garden) |
+| OpenCode Zen | [opencode.ai](https://opencode.ai) (free tier) |
