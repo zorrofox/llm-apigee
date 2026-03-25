@@ -1,127 +1,196 @@
-# LLM Gateway — 管理控制台
+# LLM Gateway — Admin UI
 
-基于 Next.js 15 构建的 LLM 网关管理控制台，提供 API Key 管理、Token 配额配置、实时监控 Dashboard 等功能。通过 Google Cloud IAP 认证，部署在 Cloud Run。
+A Next.js 15 management console for the LLM Gateway on Apigee X.
+Provides real-time dashboard, API key management, token quota configuration, request logs, model routing, cache management, and alert policies.
 
-## 访问地址
+Protected by Google Cloud IAP. Deployed on Cloud Run.
 
-**生产环境**：`https://34-117-30-51.nip.io`（需要 IAP 认证）
+---
 
-## 功能模块
+## Pages
 
-| 页面 | 路由 | 优先级 | 功能 |
-|------|------|--------|------|
-| Dashboard | `/` | P0 | 请求量、Token 用量、缓存命中率、延迟趋势图；模型在线状态；近期活动日志 |
-| API Keys | `/keys` | P1 | 查看/创建/撤销 App；Token 配额进度条 |
-| 配额配置 | `/quota` | P1 | Product 级 / App 级 Token 配额；模型成本权重（自动生成）|
-| 请求日志 | `/logs` | P2 | 结构化日志查看，URL 参数驱动筛选和分页 |
-| 模型路由 | `/models` | P3 | 读取 Apigee bundle + KVM + Cloud Logging；模型路由状态；PATCH 更新 |
-| 缓存管理 | `/cache` | P3 | 缓存命中率统计；相似度阈值动态配置 |
-| 告警策略 | `/alerts` | P3 | Cloud Monitoring 告警策略和通知渠道管理 |
+| Page | Route | Description |
+|------|-------|-------------|
+| Dashboard | `/` | Request volume, token usage, cache hit rate, latency trends; model online status; recent activity log |
+| API Keys | `/keys` | View / create / revoke Apps; token quota progress bars |
+| Quota Config | `/quota` | Product-level and App-level token quotas; model cost weights (with auto-generate via Gemini) |
+| Request Logs | `/logs` | Structured log viewer; filter by model, status, cache status; URL-driven pagination |
+| Model Routing | `/models` | Read Apigee bundle + KVM + Cloud Logging; model routing status; inline PATCH updates |
+| Cache Management | `/cache` | Cache hit rate statistics; dynamic similarity threshold configuration |
+| Alert Policies | `/alerts` | Cloud Monitoring alert policies and notification channel management |
 
-## 技术栈
+---
 
-- **框架**：Next.js 15.2.3（App Router）+ React 19
-- **UI**：shadcn/ui + Tailwind CSS，「命令中枢」深色主题
-- **图表**：Recharts
-- **认证**：Cloud IAP（主防线）+ lib/auth.ts Route Handler 验证（纵深防御）
-- **数据源**：Apigee Management API、Cloud Logging API、Cloud Monitoring API、Vertex AI
+## Tech Stack
 
-> **安全**：Next.js < 15.2.3 存在 CVE-2025-29927 中间件绕过漏洞，固定使用 15.2.3+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 15.2.3 (App Router) + React 19 |
+| UI | shadcn/ui + Tailwind CSS — dark "command center" theme |
+| Charts | Recharts |
+| Auth | Cloud IAP (primary) + `lib/auth.ts` per-handler validation (defense-in-depth) |
+| Data sources | Apigee Management API, Cloud Logging API, Cloud Monitoring API, Vertex AI |
+| Runtime | Cloud Run (standalone output, non-root user) |
 
-## 本地开发
+> **Security:** Next.js < 15.2.3 has CVE-2025-29927 middleware bypass. Pinned to `"next": "15.2.3"`.
+
+---
+
+## Local Development
 
 ```bash
 cd ui
 npm install
-npm run dev     # http://localhost:3000（Turbopack，热更新）
+npm run dev     # http://localhost:3000 (Turbopack, hot reload)
 ```
 
-本地开发时 IAP 验证自动跳过（`NODE_ENV=development`），无需配置认证。
+IAP validation is automatically bypassed in development (`NODE_ENV=development`). No auth setup needed locally.
 
-### 可用命令
+### Environment variables (optional for local dev)
 
-| 命令 | 说明 |
-|------|------|
-| `npm run dev` | 启动开发服务器（Turbopack，http://localhost:3000）|
-| `npm run build` | 生产构建（Next.js standalone 输出）|
-| `npm run start` | 启动生产服务器（需先 build）|
-| `npm run lint` | ESLint 检查（eslint-config-next）|
+```bash
+# Copy and fill in for local testing against real GCP
+export GOOGLE_CLOUD_PROJECT=your-project-id
+export APIGEE_ORG=your-project-id
+export CROSS_PROJECT_ID=your-cross-project-id   # optional, for cross-project routing
+```
 
-## 部署
+### Available commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server (Turbopack, http://localhost:3000) |
+| `npm run build` | Production build (Next.js standalone output) |
+| `npm run start` | Start production server (requires build first) |
+| `npm run lint` | ESLint check (eslint-config-next) |
+
+---
+
+## Deployment
+
+See the [main README Phase 6](../README.md#phase-6--admin-ui-cloud-run--iap) for the full deployment walkthrough (Artifact Registry, Cloud Run, HTTPS LB, IAP).
+
+Quick redeploy after code changes:
 
 ```bash
 cd ui
-
-# 构建镜像
 docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/llm-gateway/admin-ui:latest .
-
-# 推送到 Artifact Registry
 docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/llm-gateway/admin-ui:latest
-
-# 部署到 Cloud Run
 gcloud run deploy llm-gateway-ui \
   --image=us-central1-docker.pkg.dev/YOUR_PROJECT_ID/llm-gateway/admin-ui:latest \
   --region=us-central1 \
-  --project=YOUR_PROJECT_ID
+  --project=YOUR_PROJECT_ID \
+  --no-allow-unauthenticated
 ```
 
-## 目录结构
+---
+
+## Directory Structure
 
 ```
 ui/
 ├── app/
-│   ├── layout.tsx              # 全局布局（Sidebar + IAP 用户读取）
-│   ├── page.tsx                # Dashboard（Server Component，force-dynamic）
-│   ├── keys/page.tsx           # API Key 管理
-│   ├── quota/page.tsx          # 配额配置
-│   ├── logs/page.tsx           # 请求日志（URL 参数筛选 + 分页）
-│   ├── models/page.tsx         # 模型路由状态
-│   ├── cache/page.tsx          # 缓存管理
-│   ├── alerts/page.tsx         # 告警策略
+│   ├── layout.tsx                     # Global layout: Sidebar + IAP user header
+│   ├── page.tsx                       # Dashboard (Server Component, force-dynamic)
+│   ├── keys/page.tsx                  # API Key management
+│   ├── quota/page.tsx                 # Quota configuration
+│   ├── logs/page.tsx                  # Request logs (URL param filters + pagination)
+│   ├── models/page.tsx                # Model routing status
+│   ├── cache/page.tsx                 # Cache management
+│   ├── alerts/page.tsx                # Alert policies
 │   └── api/
-│       ├── apps/route.ts              # POST 创建 App（自动创建开发者）
-│       ├── keys/route.ts              # POST 撤销 Key / PATCH 更新 App 属性
-│       ├── quota/route.ts             # POST 更新 Product 配额（批量写，避免竞争）
-│       ├── quota/app/route.ts         # POST 更新 App 级配额覆盖
-│       ├── weights/generate/route.ts  # POST 自动生成模型权重（Vertex AI）
-│       ├── models/route.ts            # PATCH 更新模型路由配置
-│       ├── cache/route.ts             # GET 缓存统计 / PATCH 更新阈值配置
-│       └── alerts/route.ts            # GET/POST/PATCH/DELETE 告警策略管理
+│       ├── apps/route.ts              # POST: create App (auto-creates developer)
+│       ├── keys/route.ts              # POST: revoke key / PATCH: update App attributes
+│       ├── quota/route.ts             # POST: update Product quota (batch write, race-free)
+│       ├── quota/app/route.ts         # POST: update App-level quota override
+│       ├── weights/generate/route.ts  # POST: auto-generate model weights via Vertex AI
+│       ├── models/route.ts            # PATCH: update model routing config via Apigee KVM
+│       ├── cache/route.ts             # GET: cache stats / PATCH: update similarity threshold
+│       └── alerts/route.ts            # GET/POST/PATCH/DELETE: alert policy management
 ├── components/
-│   ├── layout/                 # Sidebar、Topbar
-│   ├── dashboard/              # MetricCard、RequestChart、ModelStatus、ActivityFeed
-│   ├── keys/KeyTable.tsx       # API Key 表格（含新建/编辑/撤销弹窗）
-│   └── quota/QuotaEditor.tsx   # 配额编辑器（Product/App/权重三区块）
+│   ├── layout/
+│   │   ├── Sidebar.tsx                # Navigation sidebar
+│   │   └── Topbar.tsx                 # Page header with gateway status indicator
+│   ├── dashboard/
+│   │   ├── MetricCard.tsx             # Numeric KPI card with trend
+│   │   ├── RequestChart.tsx           # Time-series request/token chart (Recharts)
+│   │   ├── ModelStatus.tsx            # Model online/offline status grid
+│   │   └── ActivityFeed.tsx           # Recent request log feed
+│   ├── keys/
+│   │   └── KeyTable.tsx               # API key table with create/edit/revoke dialogs
+│   ├── quota/
+│   │   └── QuotaEditor.tsx            # Quota editor: Product / App / weight sections
+│   ├── logs/
+│   │   ├── LogTable.tsx               # Request log table
+│   │   └── LogFilters.tsx             # Filter bar (model, status, cache, time range)
+│   ├── models/
+│   │   └── ModelGroupTable.tsx        # Model routing table with inline KVM editor
+│   ├── cache/
+│   │   ├── CacheStatsView.tsx         # Cache hit rate charts
+│   │   └── CacheConfigPanel.tsx       # Similarity threshold configuration
+│   ├── alerts/
+│   │   └── AlertsList.tsx             # Alert policy list with enable/disable toggle
+│   └── ui/                            # shadcn/ui primitives (button, dialog, table, etc.)
 ├── lib/
-│   ├── auth.ts                 # IAP header 验证
-│   ├── apigee.ts               # Apigee Management API client
-│   ├── logging.ts              # Cloud Logging API client
-│   ├── monitoring.ts           # Cloud Monitoring API client
-│   └── model-status.ts         # 模型健康状态（Cloud Logging 成功率统计）
-├── Dockerfile                  # standalone 输出，非 root 用户运行
-└── package.json                # "next": "15.2.3"
+│   ├── auth.ts                        # IAP header validation (requireIAP)
+│   ├── apigee.ts                      # Apigee Management API client
+│   ├── logging.ts                     # Cloud Logging API client
+│   ├── monitoring.ts                  # Cloud Monitoring API client (ALIGN_DELTA queries)
+│   ├── model-routing.ts               # Parse model-router.js from Apigee bundle
+│   ├── model-status.ts                # Model health: Cloud Logging success rate (past 1h)
+│   ├── cache-stats.ts                 # Cache hit/miss stats from Cloud Logging
+│   ├── alerts.ts                      # Cloud Monitoring alert policy operations
+│   ├── alert-templates.ts             # Pre-defined alert policy templates
+│   └── utils.ts                       # Shared utilities
+├── Dockerfile                         # Standalone output; non-root user (nextjs:nodejs)
+├── package.json                       # "next": "15.2.3"
+└── next.config.ts                     # output: "standalone"
 ```
 
-## 关键设计
+---
 
-### 认证（双重防线）
+## Key Design Decisions
+
+### Authentication (defense-in-depth)
+
 ```
-Browser → Cloud LB（IAP）→ Cloud Run → lib/auth.ts → Route Handler
+Browser → Cloud LB (IAP enforced) → Cloud Run → lib/auth.ts → Route Handler
 ```
-- IAP 是主防线，未认证请求在 GCP 基础设施层被拦截
-- 每个 Route Handler 独立调用 `requireIAP(req.headers)` 验证（不依赖 middleware）
-- Cloud Run 设置 `--ingress=internal-and-cloud-load-balancing`，直接访问 run.app URL 被拒绝
 
-### 自动生成模型权重
-- 调用 `gemini-2.5-flash` + `thinkingConfig.thinkingBudget: 0`（禁用 thinking 节省 token）
-- `responseMimeType: "application/json"` 强制 JSON 输出
-- 使用 Cloud Run SA 的 Google Auth 直接调 Vertex AI，不经过 Apigee 网关
+- **IAP is the primary layer** — unauthenticated requests are rejected at the GCP infrastructure level before reaching Cloud Run.
+- **Every Route Handler independently validates** the `x-goog-authenticated-user-email` header via `requireIAP()`. Never relies on middleware alone (CVE-2025-29927 lesson).
+- **Cloud Run ingress:** `internal-and-cloud-load-balancing` — direct `*.run.app` access is denied.
+- **Local dev bypass:** When `NODE_ENV=development`, `requireIAP()` returns `dev@local` without checking headers.
 
-### Apigee 属性写入
-- `setProductAttributes()` 一次读取再批量 POST（避免 `PUT /attributes/{attr}` 对新属性 404）
-- 并发写入有竞争风险，所有配额属性合并为单次调用
+### Data freshness
 
-### 数据策略
-- Dashboard 指标：Cloud Monitoring（ALIGN_DELTA 计数）+ Cloud Logging（延迟、缓存命中率）
-- 模型健康：Cloud Logging 过去 1h 请求成功率，成功率 ≥95% = online
-- 所有页面 `force-dynamic`，禁用 ISR 缓存，确保数据实时性
+All pages use `export const revalidate = 0` (equivalent to `force-dynamic`) — Next.js ISR cache is disabled. Every page load fetches fresh data from GCP APIs.
+
+| Data | Source | Notes |
+|------|--------|-------|
+| Request rate / token usage | Cloud Monitoring (`ALIGN_DELTA`) | Actual count per interval, not rate |
+| Cache hit rate / latency | Cloud Logging (aggregated) | Derived from structured log entries |
+| Model health | Cloud Logging success rate (past 1h) | ≥95% success = online |
+| API keys / Apps | Apigee Management API | Real-time |
+| Quota attributes | Apigee Management API | Real-time |
+
+### Auto-generate model weights
+
+The `/quota` page has a button to auto-generate token cost weights using Gemini:
+- Calls `gemini-2.5-flash` with `thinkingConfig.thinkingBudget: 0` (disables thinking to avoid exhausting `maxOutputTokens`)
+- Uses `responseMimeType: "application/json"` for strict JSON output
+- Authenticates directly to Vertex AI using the Cloud Run service account (not through the Apigee gateway)
+
+### Apigee attribute writes (batch, race-free)
+
+All quota attribute updates use a single batch write:
+```
+GET  /apiproducts/{product}/attributes     → read all existing attributes
+POST /apiproducts/{product}/attributes     → write merged attributes in one call
+```
+`PUT /apiproducts/{product}/attributes/{attr}` is not used — it returns 404 for new attributes and causes race conditions when called concurrently.
+
+### Cloud Monitoring queries
+
+`llm_request_count` and `llm_error_count` are `DELTA` metrics — queries use `ALIGN_DELTA` to get actual counts per interval (not `ALIGN_RATE`, which returns a per-second decimal).
+`llm_token_usage` is a `DELTA + DISTRIBUTION` metric — use `ALIGN_DELTA` + extract `distributionValue.mean`.
