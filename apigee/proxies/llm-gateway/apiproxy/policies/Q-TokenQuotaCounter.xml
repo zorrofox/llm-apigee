@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Quota name="Q-TokenQuotaCounter" type="flexi">
+  <DisplayName>LLM Token Quota - Counter</DisplayName>
+  <Identifier ref="verifyapikey.VA-VerifyApiKey.client_id"/>
+  <Allow count="1000000"
+         countRef="verifyapikey.VA-VerifyApiKey.apiproduct.developer.token.quota.limit"/>
+  <Interval ref="verifyapikey.VA-VerifyApiKey.apiproduct.developer.token.quota.interval"/>
+  <TimeUnit ref="verifyapikey.VA-VerifyApiKey.apiproduct.developer.token.quota.timeunit"/>
+  <MessageWeight ref="llm.effective_tokens"/>
+  <Distributed>true</Distributed>
+  <Synchronous>true</Synchronous>
+  <CountOnly>true</CountOnly>
+  <SharedName>token-quota</SharedName>
+</Quota>

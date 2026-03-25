@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<TargetEndpoint name="opencode">
+  <Description>OpenCode Zen free models - no auth required</Description>
+
+  <HTTPTargetConnection>
+    <URL>https://opencode.ai</URL>
+    <SSLInfo><Enabled>true</Enabled></SSLInfo>
+    <Properties>
+      <Property name="copy.pathsuffix">false</Property>
+      <Property name="success.codes">1xx,2xx,3xx,4xx,5xx</Property>
+    </Properties>
+  </HTTPTargetConnection>
+
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step><Name>JS-ModelRouter</Name></Step>
+      <Step><Name>JS-RequestNormalizer</Name></Step>
+      <!-- Strip x-api-key and Authorization headers — OpenCode free needs no token -->
+      <Step><Name>AM-StripAuthHeader</Name></Step>
+    </Request>
+    <Response/>
+  </PreFlow>
+
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+</TargetEndpoint>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<SharedFlow name="SemanticCache-Populate">
+  <Step><Name>JS-BuildCacheId</Name></Step>
+  <Step><Name>PC-PopulateCache</Name></Step>
+  <Step><Name>SC-GetEmbeddingPopulate</Name></Step>
+  <Step><Name>JS-BuildUpsertPayload</Name></Step>
+  <Step>
+    <Name>SC-UpsertVector</Name>
+    <Condition>llm.cache.upsert_ready = true</Condition>
+  </Step>
+  <Step><Name>JS-CheckUpsertResponse</Name></Step>
+</SharedFlow>

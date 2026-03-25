@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Quota name="QU-LlmQuota">
+  <DisplayName>LLM API Quota</DisplayName>
+  <Allow count="1000" countRef="verifyapikey.VA-VerifyApiKey.apiproduct.developer.quota.limit"/>
+  <Interval ref="verifyapikey.VA-VerifyApiKey.apiproduct.developer.quota.interval"/>
+  <TimeUnit ref="verifyapikey.VA-VerifyApiKey.apiproduct.developer.quota.timeunit"/>
+  <Identifier ref="verifyapikey.VA-VerifyApiKey.client_id"/>
+  <Distributed>true</Distributed>
+  <Synchronous>true</Synchronous>
+</Quota>

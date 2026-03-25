@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-AuthError">
+  <DisplayName>Authentication Error Response</DisplayName>
+  <Set>
+    <StatusCode>401</StatusCode>
+    <ReasonPhrase>Unauthorized</ReasonPhrase>
+    <Headers>
+      <Header name="Content-Type">application/json</Header>
+    </Headers>
+    <Payload contentType="application/json">{"error":{"message":"Invalid or missing API key. Provide a valid key in the x-api-key header.","type":"invalid_request_error","code":"invalid_api_key","source":"gateway"}}</Payload>
+  </Set>
+  <AssignTo transport="http" type="response"/>
+</AssignMessage>

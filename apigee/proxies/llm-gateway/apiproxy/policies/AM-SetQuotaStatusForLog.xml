@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-SetQuotaStatusForLog">
+  <DisplayName>Set 429 Status Code for Logging</DisplayName>
+  <AssignVariable>
+    <Name>llm.log_status_code</Name>
+    <Value>429</Value>
+  </AssignVariable>
+  <AssignTo createNew="false" type="request"/>
+
+</AssignMessage>

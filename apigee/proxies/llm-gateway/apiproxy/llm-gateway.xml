@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<APIProxy revision="1" name="llm-gateway">
+  <DisplayName>LLM Gateway</DisplayName>
+  <Description>Unified LLM Gateway - Gemini, Claude, GLM and more via Vertex AI</Description>
+  <BasePaths>/v1</BasePaths>
+</APIProxy>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<SharedFlowBundle revision="1" name="SemanticCache-Lookup">
+  <SharedFlows>
+    <SharedFlow>SemanticCache-Lookup</SharedFlow>
+  </SharedFlows>
+  <DisplayName>SemanticCache-Lookup</DisplayName>
+  <Description>Semantic cache lookup using Vertex AI Embeddings and Vector Search</Description>
+</SharedFlowBundle>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Javascript name="JS-BuildUpsertPayload" timeLimit="200">
+  <DisplayName>Build Vector Upsert Payload</DisplayName>
+  <ResourceURL>jsc://build-upsert-payload.js</ResourceURL>
+</Javascript>

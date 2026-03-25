@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-AddObsHeaders" continueOnError="true">
+  <DisplayName>Add Observability Response Headers</DisplayName>
+  <Set>
+    <Headers>
+      <Header name="x-llm-model">{llm.resolved_model}</Header>
+      <Header name="x-llm-project">{llm.project}</Header>
+      <Header name="x-cache">MISS</Header>
+      <Header name="x-cache-score">{llm.cache.score}</Header>
+    </Headers>
+  </Set>
+  <AssignTo createNew="false" type="response"/>
+</AssignMessage>

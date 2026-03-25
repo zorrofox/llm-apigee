@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-CacheHitResponse" continueOnError="true">
+  <DisplayName>Return Cached Response (Cache HIT)</DisplayName>
+  <Set>
+    <StatusCode>200</StatusCode>
+    <Headers>
+      <Header name="Content-Type">application/json</Header>
+      <Header name="x-cache">HIT</Header>
+      <Header name="x-cache-score">{llm.cache.score}</Header>
+      <Header name="x-llm-model">{llm.model}</Header>
+    </Headers>
+    <Payload>{llm.cache.cached_response}</Payload>
+  </Set>
+  <AssignTo createNew="true" transport="http" type="response"/>
+</AssignMessage>

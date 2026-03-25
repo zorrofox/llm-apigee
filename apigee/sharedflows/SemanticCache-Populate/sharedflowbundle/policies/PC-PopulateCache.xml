@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<PopulateCache name="PC-PopulateCache" continueOnError="true">
+  <DisplayName>Store LLM Response in Apigee Cache</DisplayName>
+  <CacheKey>
+    <KeyFragment ref="llm.cache.id"/>
+  </CacheKey>
+  <Source>response.content</Source>
+  <Scope>Global</Scope>
+  <ExpirySettings>
+    <TimeoutInSec>3600</TimeoutInSec>
+  </ExpirySettings>
+</PopulateCache>

@@ -1,0 +1,14 @@
+# Secrets — never commit
+infra/api-key.env
+infra/apigee.env
+
+# Browser session logs
+.playwright-mcp/
+
+# UI build artifacts
+ui/node_modules/
+ui/.next/
+ui/tsconfig.tsbuildinfo
+
+# OS
+.DS_Store

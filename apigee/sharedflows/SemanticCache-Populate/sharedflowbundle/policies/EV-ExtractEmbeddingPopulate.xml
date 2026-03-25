@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ExtractVariables name="EV-ExtractEmbeddingPopulate" continueOnError="true">
+  <DisplayName>Extract Embedding for Population</DisplayName>
+  <Source>embedPopResponse</Source>
+  <JSONPayload>
+    <Variable name="llm.cache.pop_embedding_json" type="string">
+      <JSONPath>$.predictions[0].embeddings.values</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</ExtractVariables>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-BackendError">
+  <DisplayName>Backend Error Response</DisplayName>
+  <Set>
+    <StatusCode>502</StatusCode>
+    <ReasonPhrase>Bad Gateway</ReasonPhrase>
+    <Headers>
+      <Header name="Content-Type">application/json</Header>
+    </Headers>
+    <Payload contentType="application/json">{"error":{"message":"Upstream LLM service error. Please retry.","type":"api_error","code":"upstream_error"}}</Payload>
+  </Set>
+  <AssignTo createNew="true" transport="http" type="response"/>
+</AssignMessage>

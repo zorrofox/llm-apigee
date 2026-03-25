@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  从 KVM cache-config 读取语义缓存动态配置
+  continueOnError="true"：KVM 不可用时不中断，变量保持空值 → 代码内默认值生效
+  ExpiryTimeInSecs="30"：30s 本地缓存，修改阈值后约 30s 生效
+-->
+<KeyValueMapOperations name="KV-ReadCacheConfig"
+    mapIdentifier="cache-config"
+    continueOnError="true">
+  <DisplayName>Read Cache Config from KVM</DisplayName>
+  <ExpiryTimeInSecs>30</ExpiryTimeInSecs>
+  <Scope>environment</Scope>
+  <!-- 相似度阈值，空 = 使用代码内默认值 0.95 -->
+  <Get assignTo="kvm.similarity_threshold">
+    <Key><Parameter>similarity_threshold</Parameter></Key>
+  </Get>
+</KeyValueMapOperations>

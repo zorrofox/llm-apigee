@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ExtractVariables name="EV-ExtractEmbedding">
+  <DisplayName>Extract Embedding Vector from Response</DisplayName>
+  <Source>embeddingResponse</Source>
+  <JSONPayload>
+    <Variable name="llm.cache.embedding_json" type="string">
+      <JSONPath>$.predictions[0].embeddings.values</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</ExtractVariables>

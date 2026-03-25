@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<MessageLogging name="ML-CloudLogging">
+  <DisplayName>Cloud Logging - LLM Request Log</DisplayName>
+  <CloudLogging>
+    <LogName>projects/YOUR_PROJECT_ID/logs/llm-gateway-requests</LogName>
+    <Message contentType="application/json" escapeReservedCharacters="true">{
+  "requestId":         "{messageid}",
+  "apiKeyApp":         "{verifyapikey.VA-VerifyApiKey.app.name}",
+  "apiKeyDeveloper":   "{verifyapikey.VA-VerifyApiKey.developer.email}",
+  "modelRequested":    "{llm.model}",
+  "modelResolved":     "{llm.resolved_model}",
+  "publisher":         "{llm.publisher}",
+  "project":           "{llm.project}",
+  "backend":           "{llm.backend}",
+  "cacheStatus":       "{response.header.x-cache}",
+  "cacheScore":        "{llm.cache.score}",
+  "statusCode":        "{llm.log_status_code}",
+  "promptTokens":      "{llm.prompt_tokens}",
+  "completionTokens":  "{llm.completion_tokens}",
+  "totalTokens":       "{llm.total_tokens}",
+  "effectiveTokens":   "{llm.effective_tokens}",
+  "tokenWeight":       "{llm.token_weight}",
+  "totalLatencyMs":    "{llm.total_latency_ms}",
+  "targetLatencyMs":   "{llm.target_latency_ms}",
+  "clientIp":          "{client.ip}"
+}</Message>
+    <ResourceLabels>
+      <Label><Key>apigee_proxy</Key><Value>llm-gateway</Value></Label>
+      <Label><Key>environment</Key><Value>prod</Value></Label>
+    </ResourceLabels>
+  </CloudLogging>
+</MessageLogging>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<FlowCallout name="FC-SemanticCacheLookup" continueOnError="true">
+  <DisplayName>Semantic Cache - Lookup (non-blocking)</DisplayName>
+  <SharedFlowBundle>SemanticCache-Lookup</SharedFlowBundle>
+</FlowCallout>

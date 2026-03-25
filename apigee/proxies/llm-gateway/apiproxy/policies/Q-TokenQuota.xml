@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Quota name="Q-TokenQuota" type="flexi">
+  <DisplayName>LLM Token Quota - Enforce</DisplayName>
+  <Identifier ref="verifyapikey.VA-VerifyApiKey.client_id"/>
+  <!-- token.quota.effective_limit 由 JS-ResolveTokenQuota 计算：App 级覆盖 > Product 默认 > 兜底 -->
+  <Allow count="1000000"
+         countRef="token.quota.effective_limit"/>
+  <Interval ref="verifyapikey.VA-VerifyApiKey.apiproduct.developer.token.quota.interval"/>
+  <TimeUnit ref="verifyapikey.VA-VerifyApiKey.apiproduct.developer.token.quota.timeunit"/>
+  <Distributed>true</Distributed>
+  <Synchronous>true</Synchronous>
+  <EnforceOnly>true</EnforceOnly>
+  <SharedName>token-quota</SharedName>
+</Quota>

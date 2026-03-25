@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<SharedFlow name="SemanticCache-Lookup">
+  <!-- 读取 KVM cache-config（相似度阈值），continueOnError 保证不影响正常流程 -->
+  <Step><Name>KV-ReadCacheConfig</Name></Step>
+  <Step><Name>JS-ExtractPrompt</Name></Step>
+  <Step><Name>SC-GetEmbedding</Name></Step>
+  <Step><Name>EV-ExtractEmbedding</Name></Step>
+  <Step><Name>JS-BuildVsPayload</Name></Step>
+  <Step>
+    <Name>SC-VectorSearch</Name>
+    <Condition>llm.cache.embedding_ready = true</Condition>
+  </Step>
+  <Step><Name>JS-CheckCacheHit</Name></Step>
+  <Step>
+    <Name>LC-LookupCache</Name>
+    <Condition>llm.cache.hit = true</Condition>
+  </Step>
+  <Step>
+    <Name>AM-CacheHitResponse</Name>
+    <Condition>llm.cache.hit = true AND lookupcache.LC-LookupCache.cachehit = true</Condition>
+  </Step>
+</SharedFlow>

@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Gateway on Apigee X — Architecture</title>
+<style>
+  :root {
+    --bg:        #0b0f1a;
+    --bg2:       #111827;
+    --border:    #1e293b;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --blue:      #3b82f6;
+    --blue-dim:  #1e3a5f;
+    --green:     #22c55e;
+    --green-dim: #14532d;
+    --purple:    #a855f7;
+    --purple-dim:#3b0764;
+    --amber:     #f59e0b;
+    --amber-dim: #451a03;
+    --cyan:      #06b6d4;
+    --cyan-dim:  #0e4a5a;
+    --red:       #ef4444;
+    --red-dim:   #450a0a;
+    --gemini:    #4285f4;
+    --claude:    #d97706;
+    --maas:      #8b5cf6;
+    --opencode:  #10b981;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: clamp(18px, 2vw, 26px);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+    background: linear-gradient(135deg, #60a5fa, #818cf8, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 28px;
+  }
+
+  /* ── Main diagram grid ─────────────────────────────────────────────── */
+  .diagram {
+    display: grid;
+    grid-template-columns: 100px 18px 1fr 18px 280px;
+    grid-template-rows: auto;
+    gap: 0;
+    align-items: start;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── Generic box ───────────────────────────────────────────────────── */
+  .box {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 10px 12px;
+  }
+
+  .box-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Client ────────────────────────────────────────────────────────── */
+  .col-client {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-top: 60px;
+  }
+
+  .client-box {
+    background: linear-gradient(135deg, #1e3a5f, #1a2a3a);
+    border: 1px solid var(--blue);
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+    width: 100%;
+  }
+
+  .client-icon { font-size: 28px; display: block; margin-bottom: 4px; }
+  .client-label { font-size: 11px; font-weight: 600; color: #93c5fd; }
+  .client-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Arrow column ──────────────────────────────────────────────────── */
+  .col-arrow {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 60px;
+  }
+
+  /* ── LB row (spans full width) ─────────────────────────────────────── */
+  .lb-row {
+    grid-column: 1 / -1;
+    grid-row: 0;
+    margin-bottom: 4px;
+  }
+
+  /* ── Apigee main column ────────────────────────────────────────────── */
+  .col-apigee {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  /* ── Backend arrow ─────────────────────────────────────────────────── */
+  .col-arrow-right {
+    grid-column: 4;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding-top: 20px;
+    gap: 4px;
+  }
+
+  /* ── Backends column ───────────────────────────────────────────────── */
+  .col-backends {
+    grid-column: 5;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ── Load Balancer ─────────────────────────────────────────────────── */
+  .lb-box {
+    background: linear-gradient(135deg, #1a2a1a, #1e3a2e);
+    border: 1px solid #22c55e66;
+    border-radius: 10px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .lb-icon { font-size: 22px; }
+  .lb-text strong { font-size: 12px; color: var(--green); font-weight: 700; }
+  .lb-text span { font-size: 10px; color: var(--muted); display: block; }
+
+  /* ── Apigee X container ────────────────────────────────────────────── */
+  .apigee-container {
+    background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+    border: 1.5px solid #3b82f688;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .apigee-header {
+    background: linear-gradient(90deg, #1e3a5f, #1e2a4f);
+    border-bottom: 1px solid #3b82f644;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .apigee-header strong { font-size: 13px; color: #93c5fd; font-weight: 700; }
+  .apigee-header span { font-size: 10px; color: var(--muted); }
+
+  .apigee-body {
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 10px;
+  }
+
+  /* ── Flow sections inside Apigee ───────────────────────────────────── */
+  .flow-section {
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid transparent;
+  }
+
+  .flow-req {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    background: #0f1e30;
+    border-color: #1d4ed844;
+  }
+
+  .flow-cache {
+    grid-column: 2;
+    grid-row: 1;
+    background: #0f1f1a;
+    border-color: #16a34a44;
+  }
+
+  .flow-resp {
+    grid-column: 1;
+    grid-row: 3;
+    background: #1a1020;
+    border-color: #7c3aed44;
+  }
+
+  .flow-log {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    background: #1a1a0f;
+    border-color: #b45309 44;
+    border-color: #b4530944;
+  }
+
+  .flow-label {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #ffffff11;
+  }
+
+  .flow-req .flow-label  { color: #60a5fa; }
+  .flow-cache .flow-label { color: #4ade80; }
+  .flow-resp .flow-label { color: #c084fc; }
+  .flow-log .flow-label  { color: #fbbf24; }
+
+  /* ── Policy steps ──────────────────────────────────────────────────── */
+  .steps { display: flex; flex-direction: column; gap: 3px; }
+
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 5px;
+    background: #ffffff08;
+    border: 1px solid #ffffff0a;
+    transition: background 0.15s;
+  }
+
+  .step-num {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .step-auth { background: #1e3a5f; color: #93c5fd; }
+  .step-cache-hit { background: #14532d; color: #86efac; }
+  .step-route { background: #3b0764; color: #d8b4fe; }
+  .step-norm  { background: #451a03; color: #fde68a; }
+  .step-log   { background: #1c1917; color: #d6d3d1; }
+
+  .step-body { flex: 1; }
+  .step-name { font-size: 10px; font-weight: 600; color: var(--text); }
+  .step-desc { font-size: 9px; color: var(--muted); margin-top: 1px; }
+
+  /* ── Cache component ───────────────────────────────────────────────── */
+  .cache-components { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+
+  .cache-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 5px;
+    font-size: 10px;
+  }
+
+  .cache-vs { background: #0c2a2a; border: 1px solid #06b6d444; color: #67e8f9; }
+  .cache-ac { background: #1a1a30; border: 1px solid #818cf844; color: #a5b4fc; }
+  .cache-hit { background: #14532d; border: 1px solid #22c55e44; color: #86efac; font-weight: 600; }
+
+  /* ── Backend boxes ─────────────────────────────────────────────────── */
+  .backend-box {
+    border-radius: 10px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+  }
+
+  .backend-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .backend-badge {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .backend-name { font-size: 11px; font-weight: 700; }
+  .backend-endpoint { font-size: 9px; color: var(--muted); margin-bottom: 5px; font-family: monospace; word-break: break-all; }
+  .backend-models { display: flex; flex-wrap: wrap; gap: 3px; }
+
+  .model-chip {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+  }
+
+  /* Backend A — Gemini */
+  .be-gemini { background: #0f1e35; border-color: #4285f444; }
+  .be-gemini .backend-badge  { background: #1a3a6a; color: #93c5fd; }
+  .be-gemini .backend-name   { color: #60a5fa; }
+  .be-gemini .model-chip     { background: #1e3a5f; color: #93c5fd; }
+
+  /* Backend B — Claude */
+  .be-claude { background: #1f1408; border-color: #d9770644; }
+  .be-claude .backend-badge  { background: #451a03; color: #fde68a; }
+  .be-claude .backend-name   { color: #fbbf24; }
+  .be-claude .model-chip     { background: #451a03; color: #fde68a; }
+
+  /* Backend C — MaaS */
+  .be-maas { background: #130f1f; border-color: #8b5cf644; }
+  .be-maas .backend-badge  { background: #3b0764; color: #d8b4fe; }
+  .be-maas .backend-name   { color: #a78bfa; }
+  .be-maas .model-chip     { background: #3b0764; color: #d8b4fe; }
+
+  /* Backend D — OpenCode */
+  .be-opencode { background: #0a1f14; border-color: #10b98144; }
+  .be-opencode .backend-badge  { background: #14532d; color: #86efac; }
+  .be-opencode .backend-name   { color: #34d399; }
+  .be-opencode .model-chip     { background: #14532d; color: #86efac; }
+
+  /* ── SVG arrows ─────────────────────────────────────────────────────── */
+  .arrow-wrapper { position: relative; }
+
+  svg.arr {
+    overflow: visible;
+    display: block;
+  }
+
+  /* ── Legend ─────────────────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 20px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: #111827;
+    border: 1px solid var(--border);
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 16px;
+  }
+
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .leg-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── Connector SVG overlay ─────────────────────────────────────────── */
+  .diagram-wrapper {
+    position: relative;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .connector-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* ── Horizontal flow connector ─────────────────────────────────────── */
+  .h-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 18px;
+  }
+
+  .arrow-label {
+    font-size: 8px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+
+  /* ── Route rule box ────────────────────────────────────────────────── */
+  .route-box {
+    background: #0f0f1f;
+    border: 1px dashed #6366f144;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-top: 6px;
+    font-size: 9px;
+    color: #818cf8;
+  }
+
+  .route-box strong { display: block; font-size: 9px; font-weight: 700; color: #a5b4fc; margin-bottom: 3px; }
+
+  .route-rule {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+    font-size: 9px;
+    color: var(--muted);
+    border-bottom: 1px solid #ffffff08;
+  }
+
+  .route-rule:last-child { border-bottom: none; }
+  .route-color { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Footer ─────────────────────────────────────────────────────────── */
+  footer {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  @media print {
+    body { background: white; color: black; }
+  }
+</style>
+</head>
+<body>
+
+<h1>LLM Gateway on Apigee X</h1>
+<p class="subtitle">Enterprise multi-model routing · Semantic caching · Unified OpenAI-compatible API</p>
+
+<div class="diagram-wrapper">
+<div class="diagram">
+
+  <!-- ══════════════ ROW 0: Load Balancer (spans all columns) ══════════════ -->
+  <div style="grid-column:1/-1; grid-row:1; margin-bottom:8px;">
+    <div class="lb-box">
+      <span class="lb-icon">🌐</span>
+      <div class="lb-text">
+        <strong>Global HTTPS Load Balancer</strong>
+        <span>34.36.108.216 · PSC NEG → Apigee eval-instance · Managed SSL cert (nip.io) · HTTP→HTTPS redirect</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ CLIENT ══════════════ -->
+  <div class="col-client" style="grid-column:1; grid-row:2;">
+    <div class="client-box">
+      <span class="client-icon">💻</span>
+      <div class="client-label">Client</div>
+      <div class="client-sub">POST /v1/chat/completions</div>
+      <div class="client-sub" style="margin-top:4px; color:#60a5fa; font-size:9px;">x-api-key: &lt;key&gt;</div>
+    </div>
+    <div style="font-size:22px; color:#3b82f6; line-height:1;">→</div>
+    <div style="font-size:9px; color:var(--muted); text-align:center;">HTTPS<br>443</div>
+  </div>
+
+  <!-- ══════════════ APIGEE X ══════════════ -->
+  <div class="col-apigee" style="grid-column:2/-2; grid-row:2; padding: 0 12px;">
+    <div class="apigee-container">
+      <div class="apigee-header">
+        <span style="font-size:20px;">⚡</span>
+        <strong>Apigee X</strong>
+        <span style="padding:2px 7px; background:#1e3a5f; border-radius:4px; font-size:9px; color:#93c5fd;">grhuang-02 · prod env · rev 30</span>
+        <span style="margin-left:auto; font-size:9px; color:var(--muted);">ProxyEndpoint: /v1</span>
+      </div>
+
+      <div class="apigee-body">
+
+        <!-- REQUEST PREFLOW -->
+        <div class="flow-section flow-req">
+          <div class="flow-label">① ProxyEndpoint PreFlow — Request</div>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num step-auth">🔑</div>
+              <div class="step-body">
+                <div class="step-name">VA-VerifyApiKey</div>
+                <div class="step-desc">Validates x-api-key · checks API Product · raises 401 on fail</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num step-auth" style="font-size:8px;">🚦</div>
+              <div class="step-body">
+                <div class="step-name">QU-LlmQuota</div>
+                <div class="step-desc">1,000 req/min per app · raises 429 on exceed</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num step-auth" style="font-size:8px;">📋</div>
+              <div class="step-body">
+                <div class="step-name">EV-ExtractModel</div>
+                <div class="step-desc">JSONPath $.model → llm.model variable</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num step-route">🔀</div>
+              <div class="step-body">
+                <div class="step-name">JS-DetectBackend</div>
+                <div class="step-desc">llm.backend = "vertex" | "opencode" — must run before RouteRule</div>
+              </div>
+            </div>
+            <div class="step" style="border-color:#22c55e33; background:#0f2010;">
+              <div class="step-num step-cache-hit">⚡</div>
+              <div class="step-body">
+                <div class="step-name">FC-SemanticCacheLookup</div>
+                <div class="step-desc">SharedFlow → embed → VS search → Apigee cache → HIT? return early</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RouteRule -->
+          <div class="route-box" style="margin-top:8px;">
+            <strong>RouteRule (evaluated here)</strong>
+            <div class="route-rule"><div class="route-color" style="background:#22c55e;"></div> CacheHit → null route (return cached response)</div>
+            <div class="route-rule"><div class="route-color" style="background:#ec4899;"></div> OpenCode → opencode TargetEndpoint (no auth)</div>
+            <div class="route-rule"><div class="route-color" style="background:#3b82f6;"></div> default → vertex TargetEndpoint (GoogleAccessToken)</div>
+          </div>
+
+          <!-- TargetEndpoint -->
+          <div style="margin-top:8px; padding:8px; background:#0a1520; border:1px solid #1e40af44; border-radius:6px;">
+            <div style="font-size:9px; font-weight:800; color:#60a5fa; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:5px;">② TargetEndpoint PreFlow — Request</div>
+            <div class="steps">
+              <div class="step">
+                <div class="step-num step-route">🗺️</div>
+                <div class="step-body">
+                  <div class="step-name">JS-ModelRouter</div>
+                  <div class="step-desc">Sets target.url (full Vertex AI URL) · must run in TargetEndpoint PreFlow</div>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-num step-norm">🔄</div>
+                <div class="step-body">
+                  <div class="step-name">JS-RequestNormalizer</div>
+                  <div class="step-desc">OpenAI → Gemini contents[] / Claude rawPredict / MaaS passthrough</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SEMANTIC CACHE -->
+        <div class="flow-section flow-cache">
+          <div class="flow-label">Semantic Cache — Lookup</div>
+          <div class="cache-components">
+            <div class="cache-item cache-vs">
+              <span>🔍</span>
+              <div>
+                <div style="font-weight:600;">SC-GetEmbedding</div>
+                <div style="font-size:9px; color:var(--muted);">text-embedding-004 · 768-dim</div>
+              </div>
+            </div>
+            <div style="font-size:9px; text-align:center; color:var(--muted); padding:1px 0;">↓ buildVsPayload</div>
+            <div class="cache-item cache-vs">
+              <span>📡</span>
+              <div>
+                <div style="font-weight:600;">SC-VectorSearch</div>
+                <div style="font-size:9px; color:var(--muted);">findNeighbors · threshold ≥ 0.95</div>
+              </div>
+            </div>
+            <div style="font-size:9px; text-align:center; color:var(--muted); padding:1px 0;">↓ if similarity ≥ 0.95</div>
+            <div class="cache-item cache-ac">
+              <span>💾</span>
+              <div>
+                <div style="font-weight:600;">LC-LookupCache</div>
+                <div style="font-size:9px; color:var(--muted);">Apigee distributed cache · TTL 3600s</div>
+              </div>
+            </div>
+            <div class="cache-item cache-hit">
+              <span>✅</span>
+              <div>
+                <div style="font-weight:600;">AM-CacheHitResponse</div>
+                <div style="font-size:9px;">x-cache: HIT · x-cache-score: 0.999…</div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px; padding:5px 7px; background:#0a1f0a; border-radius:5px; border:1px dashed #22c55e33;">
+            <div style="font-size:9px; color:#4ade80; font-weight:600;">Cache Key</div>
+            <div style="font-size:9px; color:var(--muted); font-family:monospace;">FNV-1a("{model}:{prompt}")</div>
+          </div>
+        </div>
+
+        <!-- RESPONSE PREFLOW -->
+        <div class="flow-section flow-resp">
+          <div class="flow-label">③ ProxyEndpoint PreFlow — Response (MISS only)</div>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num step-route">📤</div>
+              <div class="step-body">
+                <div class="step-name">JS-ResponseNormalizer</div>
+                <div class="step-desc">Gemini candidatesTokenCount / Claude stop_reason / reasoning_content → content</div>
+              </div>
+            </div>
+            <div class="step" style="border-color:#22c55e33;">
+              <div class="step-num step-cache-hit">💾</div>
+              <div class="step-body">
+                <div class="step-name">FC-SemanticCachePopulate</div>
+                <div class="step-desc">FNV hash → PC-PopulateCache + re-embed + VS upsertDatapoints</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num step-norm">📊</div>
+              <div class="step-body">
+                <div class="step-name">AM-AddObsHeaders</div>
+                <div class="step-desc">x-cache: MISS · x-llm-model · x-llm-project</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LOGGING -->
+        <div class="flow-section flow-log">
+          <div class="flow-label">PostFlow + FaultRules</div>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num step-norm" style="font-size:8px;">📝</div>
+              <div class="step-body">
+                <div class="step-name">AM-SetStatusForLog</div>
+                <div class="step-desc">response.status.code → llm.log_status_code</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num step-norm" style="font-size:8px;">☁️</div>
+              <div class="step-body">
+                <div class="step-name">ML-CloudLogging</div>
+                <div class="step-desc">Structured JSON → llm-gateway-requests log</div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px; padding:5px 7px; background:#1a1205; border-radius:5px; border:1px dashed #b4530944; font-size:9px; color:#fbbf24;">
+            <strong style="display:block; margin-bottom:3px;">Log Fields</strong>
+            <span style="color:var(--muted);">requestId · modelRequested · modelResolved · publisher · project · backend · cacheStatus · cacheScore · statusCode · promptTokens · totalTokens · clientIp</span>
+          </div>
+          <div style="margin-top:6px; padding:5px 7px; background:#1a1205; border-radius:5px; border:1px dashed #b4530944; font-size:9px;">
+            <strong style="color:#fbbf24;">FaultRules also log:</strong>
+            <div style="color:var(--muted); margin-top:2px;">AM-AuthError → statusCode=401<br>AM-QuotaError → statusCode=429</div>
+          </div>
+        </div>
+
+      </div><!-- /apigee-body -->
+    </div><!-- /apigee-container -->
+  </div><!-- /col-apigee -->
+
+  <!-- ══════════════ BACKENDS ══════════════ -->
+  <div class="col-backends" style="grid-column:5; grid-row:2; padding-left:8px;">
+
+    <!-- Endpoint A: Gemini -->
+    <div class="backend-box be-gemini">
+      <div class="backend-header">
+        <div class="backend-badge">A</div>
+        <div>
+          <div class="backend-name">Vertex AI · Gemini</div>
+          <div style="font-size:9px; color:var(--muted);">generateContent</div>
+        </div>
+        <span style="margin-left:auto; font-size:16px;">✨</span>
+      </div>
+      <div class="backend-endpoint">…/publishers/google/models/{model}:generateContent</div>
+      <div class="backend-models">
+        <span class="model-chip be-gemini">gemini-3.1-pro</span>
+        <span class="model-chip be-gemini">gemini-3-flash</span>
+        <span class="model-chip be-gemini">gemini-2.5-pro</span>
+        <span class="model-chip be-gemini">gemini-2.5-flash</span>
+        <span class="model-chip be-gemini">gemini-2.0-flash</span>
+        <span class="model-chip be-gemini" style="background:#0d2a4a; color:#60a5fa; border:1px dashed #3b82f6;">grhuang/…</span>
+      </div>
+      <div style="font-size:9px; color:var(--muted); margin-top:4px;">Auth: GoogleAccessToken (apigee-llm-sa) · copy.pathsuffix=false</div>
+    </div>
+
+    <!-- Endpoint B: Claude -->
+    <div class="backend-box be-claude">
+      <div class="backend-header">
+        <div class="backend-badge">B</div>
+        <div>
+          <div class="backend-name">Vertex AI · Claude</div>
+          <div style="font-size:9px; color:var(--muted);">rawPredict</div>
+        </div>
+        <span style="margin-left:auto; font-size:16px;">🧠</span>
+      </div>
+      <div class="backend-endpoint">…/publishers/anthropic/models/{model}:rawPredict</div>
+      <div class="backend-models">
+        <span class="model-chip be-claude">claude-opus-4-6</span>
+        <span class="model-chip be-claude">claude-sonnet-4-6</span>
+        <span class="model-chip be-claude">claude-haiku-4-5</span>
+        <span class="model-chip be-claude">claude-opus-4-5</span>
+      </div>
+      <div style="font-size:9px; color:var(--muted); margin-top:4px;">Request: anthropic_version + messages · Response: content[].text</div>
+    </div>
+
+    <!-- Endpoint C: MaaS OpenAPI -->
+    <div class="backend-box be-maas">
+      <div class="backend-header">
+        <div class="backend-badge">C</div>
+        <div>
+          <div class="backend-name">Vertex AI · MaaS OpenAPI</div>
+          <div style="font-size:9px; color:var(--muted);">chat/completions (OpenAI-compat)</div>
+        </div>
+        <span style="margin-left:auto; font-size:16px;">🔌</span>
+      </div>
+      <div class="backend-endpoint">…/endpoints/openapi/chat/completions</div>
+      <div style="font-size:9px; color:#c4b5fd; margin-bottom:4px; font-style:italic;">model: "publisher/model-id" · all MaaS share one URL</div>
+      <div class="backend-models">
+        <span class="model-chip be-maas">zai-org/glm-5-maas</span>
+        <span class="model-chip be-maas">deepseek-ai/deepseek-v3.2</span>
+        <span class="model-chip be-maas">moonshotai/kimi-k2</span>
+        <span class="model-chip be-maas">minimaxai/minimax-m2</span>
+        <span class="model-chip be-maas">qwen/qwen3-235b</span>
+        <span class="model-chip be-maas">qwen/qwen3-coder</span>
+      </div>
+      <div style="font-size:9px; color:var(--muted); margin-top:4px;">Response: reasoning_content → content (thinking models)</div>
+    </div>
+
+    <!-- Endpoint D: OpenCode -->
+    <div class="backend-box be-opencode">
+      <div class="backend-header">
+        <div class="backend-badge">D</div>
+        <div>
+          <div class="backend-name">OpenCode Zen · Free</div>
+          <div style="font-size:9px; color:var(--muted);">No auth · No quota cost</div>
+        </div>
+        <span style="margin-left:auto; font-size:16px;">🆓</span>
+      </div>
+      <div class="backend-endpoint">opencode.ai/zen/v1/chat/completions</div>
+      <div class="backend-models">
+        <span class="model-chip be-opencode">big-pickle</span>
+        <span class="model-chip be-opencode">minimax-m2.5-free</span>
+        <span class="model-chip be-opencode">mimo-v2-flash-free</span>
+        <span class="model-chip be-opencode">trinity-large-free</span>
+      </div>
+      <div style="font-size:9px; color:var(--muted); margin-top:4px;">Strips x-api-key header · separate TargetEndpoint (no GoogleAuth)</div>
+    </div>
+
+  </div><!-- /col-backends -->
+
+</div><!-- /diagram -->
+</div><!-- /diagram-wrapper -->
+
+<!-- ══════════════ LEGEND ══════════════ -->
+<div class="legend">
+  <div class="leg-item"><div class="leg-dot" style="background:#4285f4;"></div>Endpoint A — Vertex AI Gemini (generateContent)</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#d97706;"></div>Endpoint B — Vertex AI Claude (rawPredict)</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#8b5cf6;"></div>Endpoint C — Vertex AI OpenAPI MaaS (all partners)</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#10b981;"></div>Endpoint D — OpenCode Zen (free, no auth)</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#06b6d4;"></div>Semantic Cache: Vector Search + Apigee Cache</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#f59e0b;"></div>Observability: Cloud Logging + Monitoring Dashboard</div>
+  <div class="leg-item" style="margin-left:auto;"><span style="color:var(--muted);">⚠️ Thinking models</span><span style="margin-left:4px; font-size:9px; color:var(--muted);">return reasoning_content → normalized to content</span></div>
+</div>
+
+<!-- ══════════════ METRICS TABLE ══════════════ -->
+<div style="max-width:1400px; margin:12px auto 0; display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
+  <div style="background:#111827; border:1px solid var(--border); border-radius:8px; padding:10px 12px; text-align:center;">
+    <div style="font-size:22px; font-weight:800; color:#60a5fa;">30+</div>
+    <div style="font-size:10px; color:var(--muted);">Models supported</div>
+  </div>
+  <div style="background:#111827; border:1px solid var(--border); border-radius:8px; padding:10px 12px; text-align:center;">
+    <div style="font-size:22px; font-weight:800; color:#4ade80;">0.95</div>
+    <div style="font-size:10px; color:var(--muted);">Semantic cache threshold</div>
+  </div>
+  <div style="background:#111827; border:1px solid var(--border); border-radius:8px; padding:10px 12px; text-align:center;">
+    <div style="font-size:22px; font-weight:800; color:#fbbf24;">1,000</div>
+    <div style="font-size:10px; color:var(--muted);">req/min quota per app</div>
+  </div>
+  <div style="background:#111827; border:1px solid var(--border); border-radius:8px; padding:10px 12px; text-align:center;">
+    <div style="font-size:22px; font-weight:800; color:#34d399;">55/57</div>
+    <div style="font-size:10px; color:var(--muted);">Tests passing</div>
+  </div>
+</div>
+
+<footer>
+  LLM Gateway on Apigee X · grhuang-02 · us-central1 · <code style="font-size:9px; color:#60a5fa;">https://34-36-108-216.nip.io/v1/chat/completions</code>
+</footer>
+
+</body>
+</html>

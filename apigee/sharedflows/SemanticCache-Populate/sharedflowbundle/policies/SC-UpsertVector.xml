@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ServiceCallout name="SC-UpsertVector" continueOnError="true">
+  <DisplayName>Upsert Prompt Vector to Vector Search Index</DisplayName>
+  <Request variable="upsertRequest">
+    <Set>
+      <Verb>POST</Verb>
+      <Headers>
+        <Header name="Content-Type">application/json</Header>
+      </Headers>
+      <!-- Use template syntax - ref doesn't work for response-phase ServiceCallout -->
+      <Payload contentType="application/json">{llm.cache.upsert_payload}</Payload>
+    </Set>
+  </Request>
+  <Response>upsertResponse</Response>
+  <HTTPTargetConnection>
+    <URL>https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_NUMBER/locations/us-central1/indexes/YOUR_VS_INDEX_ID:upsertDatapoints</URL>
+    <Authentication>
+      <GoogleAccessToken>
+        <Scopes>
+          <Scope>https://www.googleapis.com/auth/cloud-platform</Scope>
+        </Scopes>
+      </GoogleAccessToken>
+    </Authentication>
+  </HTTPTargetConnection>
+</ServiceCallout>

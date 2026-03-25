@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Javascript name="JS-DetectBackend" timeLimit="200">
+  <DisplayName>Detect Backend from Model Name</DisplayName>
+  <ResourceURL>jsc://detect-backend.js</ResourceURL>
+</Javascript>

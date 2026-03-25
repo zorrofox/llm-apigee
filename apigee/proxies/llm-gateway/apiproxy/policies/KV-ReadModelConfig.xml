@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  从 KVM model-routing-config 读取动态路由配置
+  continueOnError="true"：KVM 不存在或 key 缺失时不中断请求，变量保持空值
+  ExpiryTimeInSecs="30"：KVM 本地缓存 30s，修改后约 30s 生效
+-->
+<KeyValueMapOperations name="KV-ReadModelConfig"
+    mapIdentifier="model-routing-config"
+    continueOnError="true">
+  <DisplayName>Read Model Routing Config from KVM</DisplayName>
+  <ExpiryTimeInSecs>30</ExpiryTimeInSecs>
+  <Scope>environment</Scope>
+
+  <!-- 禁用模型列表，逗号分隔，e.g. "kimi-k2-thinking,qwen3-235b" -->
+  <Get assignTo="kvm.disabled_models">
+    <Key><Parameter>disabled_models</Parameter></Key>
+  </Get>
+
+  <!-- 默认回退模型覆盖，e.g. "gemini-2.5-flash"（空 = 使用代码内 DEFAULT） -->
+  <Get assignTo="kvm.default_model">
+    <Key><Parameter>default_model</Parameter></Key>
+  </Get>
+
+  <!-- 额外路由 JSON，支持新增模型无需重新部署
+       格式见 model-router.js 注释 -->
+  <Get assignTo="kvm.extra_routes">
+    <Key><Parameter>extra_routes</Parameter></Key>
+  </Get>
+</KeyValueMapOperations>

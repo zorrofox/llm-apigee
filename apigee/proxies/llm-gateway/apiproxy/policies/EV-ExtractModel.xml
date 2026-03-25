@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ExtractVariables name="EV-ExtractModel">
+  <DisplayName>Extract Model from Request Body</DisplayName>
+  <Source>request</Source>
+  <JSONPayload>
+    <Variable name="llm.model" type="string">
+      <JSONPath>$.model</JSONPath>
+    </Variable>
+    <Variable name="llm.stream" type="boolean">
+      <JSONPath>$.stream</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</ExtractVariables>

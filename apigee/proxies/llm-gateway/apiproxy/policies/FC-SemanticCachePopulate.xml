@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<FlowCallout name="FC-SemanticCachePopulate" continueOnError="true">
+  <DisplayName>Semantic Cache - Populate (non-blocking)</DisplayName>
+  <SharedFlowBundle>SemanticCache-Populate</SharedFlowBundle>
+</FlowCallout>

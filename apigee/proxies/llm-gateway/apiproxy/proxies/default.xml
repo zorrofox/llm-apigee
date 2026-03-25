@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ProxyEndpoint name="default">
+  <HTTPProxyConnection>
+    <BasePath>/v1</BasePath>
+  </HTTPProxyConnection>
+
+  <FaultRules>
+    <FaultRule name="AuthFailure">
+      <Step><Name>AM-AuthError</Name></Step>
+      <Step><Name>AM-SetAuthStatusForLog</Name></Step>
+      <Step><Name>ML-CloudLogging</Name></Step>
+      <Condition>(fault.name = "FailedToResolveAPIKey") or
+                 (fault.name = "InvalidApiKey") or
+                 (fault.name = "InvalidApiKeyForGivenResource") or
+                 (fault.name = "apiresource_doesnot_exist")</Condition>
+    </FaultRule>
+    <FaultRule name="QuotaViolation">
+      <!-- llm.quota_type="token" is set by AM-SetTokenQuotaType (runs just before Q-TokenQuota)
+           If QU-LlmQuota fails first, AM-SetTokenQuotaType never runs so llm.quota_type is unset -->
+      <Step>
+        <Name>AM-TokenQuotaError</Name>
+        <Condition>llm.quota_type = "token"</Condition>
+      </Step>
+      <Step>
+        <Name>AM-SetTokenQuotaStatusForLog</Name>
+        <Condition>llm.quota_type = "token"</Condition>
+      </Step>
+      <Step>
+        <Name>AM-QuotaError</Name>
+        <Condition>NOT (llm.quota_type = "token")</Condition>
+      </Step>
+      <Step>
+        <Name>AM-SetQuotaStatusForLog</Name>
+        <Condition>NOT (llm.quota_type = "token")</Condition>
+      </Step>
+      <Step><Name>ML-CloudLogging</Name></Step>
+      <Condition>fault.name = "QuotaViolation"</Condition>
+    </FaultRule>
+  </FaultRules>
+
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step>
+        <Name>VA-VerifyApiKey</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health")</Condition>
+      </Step>
+      <Step>
+        <Name>QU-LlmQuota</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health")</Condition>
+      </Step>
+      <Step>
+        <Name>EV-ExtractModel</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health")</Condition>
+      </Step>
+      <Step>
+        <Name>JS-DetectStreaming</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health")</Condition>
+      </Step>
+      <Step>
+        <Name>JS-DetectBackend</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health")</Condition>
+      </Step>
+      <Step>
+        <!-- App 级覆盖 > Product 默认，结果写入 token.quota.effective_limit -->
+        <Name>JS-ResolveTokenQuota</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.backend = "opencode")</Condition>
+      </Step>
+      <Step>
+        <Name>AM-SetTokenQuotaType</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.backend = "opencode")</Condition>
+      </Step>
+      <Step>
+        <Name>Q-TokenQuota</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.backend = "opencode")</Condition>
+      </Step>
+      <Step>
+        <Name>FC-SemanticCacheLookup</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+    </Request>
+    <Response>
+      <Step>
+        <Name>JS-ResponseNormalizer</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (lookupcache.LC-LookupCache.cachehit = true) AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+      <Step>
+        <Name>JS-ComputeEffectiveTokens</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (lookupcache.LC-LookupCache.cachehit = true) AND NOT (llm.backend = "opencode") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+      <Step>
+        <Name>Q-TokenQuotaCounter</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (lookupcache.LC-LookupCache.cachehit = true) AND NOT (llm.backend = "opencode") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+      <Step>
+        <Name>FC-SemanticCachePopulate</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (lookupcache.LC-LookupCache.cachehit = true) AND NOT (llm.backend = "opencode") AND (llm.completion_tokens > 0) AND NOT (llm.has_image = "true") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+      <Step>
+        <Name>AM-AddObsHeaders</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (lookupcache.LC-LookupCache.cachehit = true) AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+    </Response>
+  </PreFlow>
+
+  <Flows>
+    <Flow name="HealthCheck">
+      <Request><Step><Name>AM-HealthResponse</Name></Step></Request>
+      <Response/>
+      <Condition>(proxy.pathsuffix MatchesPath "/health") and (request.verb = "GET")</Condition>
+    </Flow>
+    <Flow name="ChatCompletions">
+      <Request/><Response/>
+      <Condition>(proxy.pathsuffix MatchesPath "/chat/completions") and (request.verb = "POST")</Condition>
+    </Flow>
+  </Flows>
+
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response>
+      <Step>
+        <Name>AM-SetStatusForLog</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+      <Step>
+        <!-- totalLatencyMs = system.timestamp - client.received.start.timestamp -->
+        <!-- targetLatencyMs = target.elapsed.time (Apigee 内置后端耗时) -->
+        <Name>JS-ComputeLatency</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+      <Step>
+        <Name>ML-CloudLogging</Name>
+        <Condition>NOT (proxy.pathsuffix MatchesPath "/health") AND NOT (llm.streaming = "true")</Condition>
+      </Step>
+    </Response>
+  </PostFlow>
+
+  <RouteRule name="CacheHit">
+    <Condition>llm.cache.hit = true AND lookupcache.LC-LookupCache.cachehit = true</Condition>
+  </RouteRule>
+  <RouteRule name="NoRoute">
+    <Condition>proxy.pathsuffix MatchesPath "/health"</Condition>
+  </RouteRule>
+  <RouteRule name="OpenCode">
+    <Condition>llm.backend = "opencode"</Condition>
+    <TargetEndpoint>opencode</TargetEndpoint>
+  </RouteRule>
+  <RouteRule name="default">
+    <TargetEndpoint>default</TargetEndpoint>
+  </RouteRule>
+</ProxyEndpoint>

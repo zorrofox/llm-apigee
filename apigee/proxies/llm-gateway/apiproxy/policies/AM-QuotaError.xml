@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-QuotaError">
+  <DisplayName>Quota Exceeded Error Response</DisplayName>
+  <Set>
+    <StatusCode>429</StatusCode>
+    <ReasonPhrase>Too Many Requests</ReasonPhrase>
+    <Headers>
+      <Header name="Content-Type">application/json</Header>
+      <Header name="Retry-After">60</Header>
+    </Headers>
+    <Payload contentType="application/json">{"error":{"message":"Rate limit exceeded. Please retry after 60 seconds.","type":"rate_limit_error","code":"rate_limit_exceeded","source":"gateway"}}</Payload>
+  </Set>
+  <AssignTo transport="http" type="response"/>
+</AssignMessage>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Javascript name="JS-HandleDisabledModel" timeLimit="200" continueOnError="true">
+  <DisplayName>Handle Disabled Model (before cache lookup)</DisplayName>
+  <ResourceURL>jsc://handle-disabled-model.js</ResourceURL>
+</Javascript>

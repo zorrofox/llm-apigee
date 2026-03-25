@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-HealthResponse">
+  <DisplayName>Health Check Response</DisplayName>
+  <Set>
+    <StatusCode>200</StatusCode>
+    <ReasonPhrase>OK</ReasonPhrase>
+    <Headers>
+      <Header name="Content-Type">application/json</Header>
+    </Headers>
+    <Payload contentType="application/json">{"status":"ok","service":"llm-gateway","version":"1.0.0"}</Payload>
+  </Set>
+  <AssignTo createNew="false" type="response"/>
+</AssignMessage>

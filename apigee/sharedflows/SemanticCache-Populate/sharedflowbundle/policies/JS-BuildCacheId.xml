@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Javascript name="JS-BuildCacheId" timeLimit="200">
+  <DisplayName>Build Stable Cache ID from Prompt Hash</DisplayName>
+  <ResourceURL>jsc://build-cache-id.js</ResourceURL>
+</Javascript>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-SetTokenQuotaType">
+  <DisplayName>Mark Token Quota Check</DisplayName>
+  <AssignVariable>
+    <Name>llm.quota_type</Name>
+    <Value>token</Value>
+  </AssignVariable>
+  <AssignTo createNew="false" type="request"/>
+</AssignMessage>

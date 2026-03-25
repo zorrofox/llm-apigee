@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-SetStatusForLog">
+  <DisplayName>Set Status Code for Logging</DisplayName>
+  <AssignVariable>
+    <Name>llm.log_status_code</Name>
+    <Ref>response.status.code</Ref>
+  </AssignVariable>
+  <AssignTo createNew="false" type="request"/>
+</AssignMessage>

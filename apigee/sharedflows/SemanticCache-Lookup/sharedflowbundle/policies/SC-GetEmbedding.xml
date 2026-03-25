@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ServiceCallout name="SC-GetEmbedding" continueOnError="true">
+  <DisplayName>Get Text Embedding from Vertex AI</DisplayName>
+  <Request variable="embeddingRequest">
+    <Set>
+      <Verb>POST</Verb>
+      <Headers>
+        <Header name="Content-Type">application/json</Header>
+      </Headers>
+      <Payload contentType="application/json">{"instances":[{"content":"{llm.cache.key_text_escaped}"}]}</Payload>
+    </Set>
+  </Request>
+  <Response>embeddingResponse</Response>
+  <HTTPTargetConnection>
+    <URL>https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/us-central1/publishers/google/models/text-embedding-004:predict</URL>
+    <Authentication>
+      <GoogleAccessToken>
+        <Scopes>
+          <Scope>https://www.googleapis.com/auth/cloud-platform</Scope>
+        </Scopes>
+      </GoogleAccessToken>
+    </Authentication>
+  </HTTPTargetConnection>
+</ServiceCallout>

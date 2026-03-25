@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage name="AM-TokenQuotaError">
+  <DisplayName>Token Quota Exceeded Error Response</DisplayName>
+  <Set>
+    <StatusCode>429</StatusCode>
+    <ReasonPhrase>Too Many Requests</ReasonPhrase>
+    <Headers>
+      <Header name="Content-Type">application/json</Header>
+      <Header name="Retry-After">3600</Header>
+    </Headers>
+    <Payload contentType="application/json">{"error":{"message":"Token quota exceeded. Please retry after 1 hour.","type":"token_quota_exceeded","code":"token_quota_exceeded","source":"gateway"}}</Payload>
+  </Set>
+  <AssignTo transport="http" type="response"/>
+</AssignMessage>

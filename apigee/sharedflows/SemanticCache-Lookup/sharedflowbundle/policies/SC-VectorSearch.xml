@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ServiceCallout name="SC-VectorSearch" continueOnError="true">
+  <DisplayName>Vector Search - Find Similar Prompts</DisplayName>
+  <Request variable="vectorSearchRequest">
+    <Set>
+      <Verb>POST</Verb>
+      <Headers>
+        <Header name="Content-Type">application/json</Header>
+      </Headers>
+      <!-- Template syntax - ref doesn't work for variable-based payloads -->
+      <Payload contentType="application/json">{llm.cache.vs_payload}</Payload>
+    </Set>
+  </Request>
+  <Response>vectorSearchResponse</Response>
+  <HTTPTargetConnection>
+    <URL>https://YOUR_VS_ENDPOINT_DOMAIN/v1/projects/YOUR_PROJECT_NUMBER/locations/us-central1/indexEndpoints/YOUR_VS_ENDPOINT_ID:findNeighbors</URL>
+    <Authentication>
+      <GoogleAccessToken>
+        <Scopes>
+          <Scope>https://www.googleapis.com/auth/cloud-platform</Scope>
+        </Scopes>
+      </GoogleAccessToken>
+    </Authentication>
+  </HTTPTargetConnection>
+</ServiceCallout>
