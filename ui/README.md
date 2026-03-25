@@ -5,6 +5,8 @@ Provides real-time dashboard, API key management, token quota configuration, req
 
 Protected by Google Cloud IAP. Deployed on Cloud Run.
 
+![LLM Gateway Admin UI — Dashboard](../docs/ui.png)
+
 ---
 
 ## Pages

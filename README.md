@@ -926,6 +926,8 @@ bash tests/run-tests.sh
 
 A Next.js 15 management console providing API key management, quota configuration, request logs, and a live dashboard.
 
+![LLM Gateway Admin UI — Dashboard](docs/ui.png)
+
 #### 6.1 Prerequisites
 
 ```bash
