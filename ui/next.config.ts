@@ -1,14 +1,15 @@
 import type { NextConfig } from 'next';
+import createNextIntlPlugin from 'next-intl/plugin';
+
+const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
 const nextConfig: NextConfig = {
-  output: 'standalone', // Cloud Run 部署使用独立输出模式
-  // 安全 headers
+  output: 'standalone',
   async headers() {
     return [
       {
         source: '/(.*)',
         headers: [
-          // 防止 CVE-2025-29927：拦截攻击者发来的 middleware bypass header
           { key: 'X-Middleware-Subrequest', value: '' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -19,4 +20,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

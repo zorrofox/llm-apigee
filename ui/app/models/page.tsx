@@ -1,7 +1,8 @@
 /**
- * P3 模型路由页面
- * Server Component — 读取 Apigee bundle + KVM + Cloud Logging
+ * P3 Model routing page
+ * Server Component — reads Apigee bundle + KVM + Cloud Logging
  */
+import { getTranslations } from 'next-intl/server';
 import { Topbar }           from '@/components/layout/Topbar';
 import { ModelGroupTable }  from '@/components/models/ModelGroupTable';
 import { getRoutingConfig } from '@/lib/model-routing';
@@ -10,6 +11,7 @@ export const dynamic    = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function ModelsPage() {
+  const t = await getTranslations('models');
   let config = null;
   let loadError = '';
 
@@ -25,25 +27,25 @@ export default async function ModelsPage() {
 
   return (
     <>
-      <Topbar title="模型路由" parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''} gatewayLive />
+      <Topbar title={t('title')} parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''} gatewayLive />
 
       <div className="p-7 space-y-4">
         {config && (
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-4 text-[11px]"
               style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-              <span>共 <span style={{ color: 'var(--c-txt-1)' }}>{totalModels}</span> 个模型</span>
-              <span>启用 <span style={{ color: 'var(--c-green)' }}>{activeCount}</span></span>
+              <span>{t.rich('totalModels', { n: totalModels, hl: (c) => <span style={{ color: 'var(--c-txt-1)' }}>{c}</span> })}</span>
+              <span>{t.rich('activeCount',  { n: activeCount,  hl: (c) => <span style={{ color: 'var(--c-green)' }}>{c}</span> })}</span>
               {disabledCount > 0 && (
-                <span>禁用 <span style={{ color: 'var(--c-red)' }}>{disabledCount}</span></span>
+                <span>{t.rich('disabledCount', { n: disabledCount, hl: (c) => <span style={{ color: 'var(--c-red)' }}>{c}</span> })}</span>
               )}
               <span>
-                默认回退：<span style={{ color: 'var(--c-green)' }}>{config.defaultModel}</span>
-                {config.kvmDefault && <span style={{ color: 'var(--c-blue)' }}> (KVM 覆盖)</span>}
+                {t.rich('defaultFallback', { model: config.defaultModel, hl: (c) => <span style={{ color: 'var(--c-green)' }}>{c}</span> })}
+                {config.kvmDefault && <span style={{ color: 'var(--c-blue)' }}>{t('kvmOverride')}</span>}
               </span>
             </div>
             <div className="text-[9px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-              禁用/默认修改约 30s 生效 · 新增模型无需重新部署
+              {t('footerNote')}
             </div>
           </div>
         )}
@@ -51,7 +53,7 @@ export default async function ModelsPage() {
         {loadError && (
           <div className="px-4 py-3 rounded-md text-[11px]"
             style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-red)', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
-            加载路由配置失败：{loadError}
+            {t('loadError', { err: loadError })}
           </div>
         )}
 

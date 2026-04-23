@@ -2,40 +2,41 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-
-/** 导航项定义 */
-const NAV = [
-  {
-    group: '监控',
-    items: [
-      { href: '/',       icon: '◈', label: 'Dashboard',   badge: null },
-      { href: '/logs',   icon: '≡', label: '请求日志',    badge: 'live' },
-    ],
-  },
-  {
-    group: '管理',
-    items: [
-      { href: '/keys',   icon: '⬡', label: 'API Keys',    badge: null },
-      { href: '/quota',  icon: '◎', label: '配额配置',    badge: null },
-      { href: '/models', icon: '⊞', label: '模型路由',    badge: null },
-    ],
-  },
-  {
-    group: '系统',
-    items: [
-      { href: '/cache',  icon: '◇', label: '缓存管理',    badge: null },
-      { href: '/alerts', icon: '△', label: '告警',        badge: null },  // badge 由 alertCount prop 动态覆盖
-    ],
-  },
-];
+import { useTranslations } from 'next-intl';
 
 interface SidebarProps {
   userEmail?:   string;
-  alertCount?:  number;  // 告警策略数量，>0 时显示 badge
+  alertCount?:  number;
 }
 
 export function Sidebar({ userEmail = 'admin', alertCount = 0 }: SidebarProps) {
   const pathname = usePathname();
+  const tNav     = useTranslations('nav');
+
+  const NAV = [
+    {
+      group: tNav('groupMonitoring'),
+      items: [
+        { href: '/',       icon: '◈', label: tNav('dashboard'),  badge: null as string | null },
+        { href: '/logs',   icon: '≡', label: tNav('logs'),       badge: tNav('live') },
+      ],
+    },
+    {
+      group: tNav('groupManagement'),
+      items: [
+        { href: '/keys',   icon: '⬡', label: tNav('keys'),       badge: null as string | null },
+        { href: '/quota',  icon: '◎', label: tNav('quota'),      badge: null as string | null },
+        { href: '/models', icon: '⊞', label: tNav('models'),     badge: null as string | null },
+      ],
+    },
+    {
+      group: tNav('groupSystem'),
+      items: [
+        { href: '/cache',  icon: '◇', label: tNav('cache'),      badge: null as string | null },
+        { href: '/alerts', icon: '△', label: tNav('alerts'),     badge: null as string | null },
+      ],
+    },
+  ];
 
   return (
     <aside
@@ -47,7 +48,6 @@ export function Sidebar({ userEmail = 'admin', alertCount = 0 }: SidebarProps) {
         flexShrink: 0,
       }}
     >
-      {/* Logo */}
       <div
         className="flex items-center gap-2.5 px-5 py-6"
         style={{ borderBottom: '1px solid var(--c-border)' }}
@@ -78,7 +78,6 @@ export function Sidebar({ userEmail = 'admin', alertCount = 0 }: SidebarProps) {
         </div>
       </div>
 
-      {/* 导航 */}
       <nav className="flex-1 overflow-y-auto px-2.5 py-3">
         {NAV.map(({ group, items }) => (
           <div key={group} className="mb-5">
@@ -123,7 +122,6 @@ export function Sidebar({ userEmail = 'admin', alertCount = 0 }: SidebarProps) {
         ))}
       </nav>
 
-      {/* 用户信息 / IAP 状态 */}
       <div
         className="flex items-center gap-2.5 px-5 py-4"
         style={{ borderTop: '1px solid var(--c-border)' }}
@@ -149,7 +147,7 @@ export function Sidebar({ userEmail = 'admin', alertCount = 0 }: SidebarProps) {
             className="text-[9px] tracking-[0.1em]"
             style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-green)' }}
           >
-            IAP VERIFIED
+            {tNav('iapVerified')}
           </div>
         </div>
       </div>

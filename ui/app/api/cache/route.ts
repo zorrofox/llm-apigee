@@ -7,7 +7,7 @@ import { requireIAP }               from '@/lib/auth';
 import { GoogleAuth }               from 'google-auth-library';
 
 const ORG  = process.env.APIGEE_ORG ?? '';
-const ENV  = 'prod';
+const ENV  = process.env.APIGEE_ENV ?? 'eval';
 const BASE = `https://apigee.googleapis.com/v1/organizations/${ORG}`;
 const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
 

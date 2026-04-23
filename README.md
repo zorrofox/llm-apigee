@@ -86,26 +86,27 @@ Client (POST /v1/chat/completions, x-api-key: <key>)
 ### Google Gemini — Endpoint A (generateContent)
 | Model | Notes |
 |-------|-------|
-| `gemini-3.1-pro-preview` | |
+| `gemini-3.1-pro-preview` | thinking |
 | `gemini-3.1-flash-lite-preview` | thinking |
 | `gemini-3.1-flash-image-preview` | image generation |
-| `gemini-3-pro-preview` | |
+| `gemini-3-pro-preview` | thinking |
 | `gemini-3-flash-preview` | thinking |
 | `gemini-2.5-pro` | thinking |
-| `gemini-2.5-flash` | |
-| `gemini-2.5-flash-lite` | |
+| `gemini-2.5-flash` | thinking, **default fallback** |
+| `gemini-2.5-flash-lite` | non-thinking, recommended baseline |
 | `gemini-2.5-flash-image` | image generation |
-| `gemini-2.0-flash-001` | default fallback |
-| `gemini-2.0-flash-lite` | |
 | `YOUR_CROSS_PROJECT_ID/gemini-2.5-pro` | cross-project quota isolation |
-| `YOUR_CROSS_PROJECT_ID/gemini-3-flash-preview` | cross-project |
 
+> 🪦 **Gemini 2.0 series retired by Google (2026-04)** — `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite` all return 404. The router falls these requests through to `gemini-2.5-flash`.
+>
 > Gemini 3.x/2.5 thinking models: thinking tokens count against `maxOutputTokens`.
 > With small `max_tokens`, thinking may exhaust the budget → empty response.
 > Set `max_tokens ≥ 200` for thinking models.
 
 ### Anthropic Claude — Endpoint B (rawPredict)
-`claude-opus-4-6` · `claude-sonnet-4-6` · `claude-haiku-4-5` · `claude-opus-4-5` · `claude-sonnet-4-5` · `claude-opus-4` · `claude-opus-4-1`
+`claude-opus-4-7` · `claude-opus-4-6` · `claude-sonnet-4-6` · `claude-haiku-4-5` · `claude-opus-4-5` · `claude-sonnet-4-5` · `claude-opus-4` · `claude-opus-4-1`
+
+> ⚠️ Anthropic deprecated `temperature` for Claude 4.7 — sending it returns 400. Use `top_p` or omit.
 
 ### MaaS Partner Models — Endpoint C (Vertex AI OpenAPI)
 | Model alias | Backend | Provider |
@@ -120,9 +121,15 @@ Client (POST /v1/chat/completions, x-api-key: <key>)
 | `qwen3-next-80b` | `qwen/qwen3-next-80b-a3b-instruct-maas` | Alibaba |
 | `qwen3-next-80b-think` | `qwen/qwen3-next-80b-a3b-thinking-maas` | Alibaba (thinking) |
 | `qwen3-coder` | `qwen/qwen3-coder-480b-a35b-instruct-maas` | Alibaba |
+| `grok-4.20-reasoning` / `grok` | `xai/grok-4.20-reasoning` | xAI (reasoning) |
+| `grok-4` / `grok-4-fast` / `grok-3` / `grok-3-mini` / `grok-code-fast-1` | `xai/<model>` | xAI — requires Model Garden enablement |
+
+> Grok publisher is `xai` (NOT `x-ai`). Reasoning models need `max_tokens ≥ 300` for visible content.
 
 ### OpenCode Zen — Endpoint D (free, no auth)
-`opencode/big-pickle` · `opencode/minimax-m2.5-free` · `opencode/mimo-v2-flash-free` · `opencode/mimo-v2-pro-free` · `opencode/mimo-v2-omni-free` · `opencode/trinity-large-preview-free` · `opencode/nemotron-3-super-free`
+`opencode/big-pickle` · `opencode/minimax-m2.5-free` · `opencode/hy3-preview-free` · `opencode/ling-2.6-flash-free` · `opencode/gpt-5-nano` · `opencode/nemotron-3-super-free`
+
+> Free model lineup churns frequently. Verify the live list at `https://opencode.ai/zen/v1/models` before deploying. As of 2026-04-23, the `mimo-v2-*` and `trinity-large-preview-free` models have been retired upstream.
 
 ---
 

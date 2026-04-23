@@ -1,8 +1,9 @@
 /**
- * P2 请求日志页面
- * Server Component — 服务端拉取数据，URL 参数驱动筛选和分页
+ * P2 Request logs page
+ * Server Component — server-side data fetch, URL-driven filters and pagination
  */
 import { Suspense }     from 'react';
+import { getTranslations } from 'next-intl/server';
 import { Topbar }       from '@/components/layout/Topbar';
 import { LogTable }     from '@/components/logs/LogTable';
 import { LogFilters }   from '@/components/logs/LogFilters';
@@ -17,9 +18,9 @@ interface PageProps {
 }
 
 export default async function LogsPage({ searchParams }: PageProps) {
+  const t = await getTranslations('logs');
   const params = await searchParams;
 
-  // 从 URL 参数解析筛选条件
   const filter: LogFilter = {
     model:       params.model       || undefined,
     app:         params.app         || undefined,
@@ -30,7 +31,6 @@ export default async function LogsPage({ searchParams }: PageProps) {
   const pageToken   = params.pageToken || undefined;
   const currentPage = Number(params.page || 1);
 
-  // 并行拉取日志、模型列表、App 列表
   const [logPage, models, apps] = await Promise.allSettled([
     queryLogs(filter, 50, pageToken),
     getLogModels(),
@@ -44,7 +44,6 @@ export default async function LogsPage({ searchParams }: PageProps) {
   const modelList = models.status === 'fulfilled' ? models.value : [];
   const appList   = apps.status   === 'fulfilled' ? apps.value   : [];
 
-  // 统计摘要
   const total200  = entries.filter(e => e.statusCode === '200').length;
   const totalHit  = entries.filter(e => e.cacheStatus === 'HIT').length;
   const avgMs     = entries.filter(e => Number(e.totalLatencyMs) > 0)
@@ -52,31 +51,28 @@ export default async function LogsPage({ searchParams }: PageProps) {
 
   return (
     <>
-      <Topbar title="请求日志" parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''} gatewayLive />
+      <Topbar title={t('title')} parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''} gatewayLive />
 
       <div className="p-7 space-y-4">
-        {/* 筛选器 + 摘要统计 */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <Suspense fallback={<div style={{ color: 'var(--c-txt-3)', fontSize: '11px' }}>加载筛选器…</div>}>
+          <Suspense fallback={<div style={{ color: 'var(--c-txt-3)', fontSize: '11px' }}>{t('filterLoading')}</div>}>
             <LogFilters models={modelList} apps={appList} />
           </Suspense>
 
-          {/* 摘要 */}
           {entries.length > 0 && (
             <div className="flex items-center gap-4 text-[10px]"
               style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-              <span>共 <span style={{ color: 'var(--c-txt-1)' }}>{entries.length}</span> 条</span>
-              <span>成功 <span style={{ color: 'var(--c-green)' }}>{total200}</span></span>
-              <span>缓存命中 <span style={{ color: 'var(--c-blue)' }}>{totalHit}</span></span>
+              <span>{t.rich('summaryTotal',     { n: entries.length, hl: (c) => <span style={{ color: 'var(--c-txt-1)' }}>{c}</span> })}</span>
+              <span>{t.rich('summarySuccess',   { n: total200,       hl: (c) => <span style={{ color: 'var(--c-green)' }}>{c}</span> })}</span>
+              <span>{t.rich('summaryCacheHit',  { n: totalHit,       hl: (c) => <span style={{ color: 'var(--c-blue)' }}>{c}</span> })}</span>
               {avgMs > 0 && (
-                <span>均延迟 <span style={{ color: 'var(--c-amber)' }}>{Math.round(avgMs)}ms</span></span>
+                <span>{t.rich('summaryAvgLatency', { ms: Math.round(avgMs), hl: (c) => <span style={{ color: 'var(--c-amber)' }}>{c}</span> })}</span>
               )}
             </div>
           )}
         </div>
 
-        {/* 日志表格 */}
-        <Suspense fallback={<div style={{ color: 'var(--c-txt-3)', fontSize: '11px', fontFamily: 'IBM Plex Mono, monospace', padding: '40px 20px', textAlign: 'center' }}>加载中…</div>}>
+        <Suspense fallback={<div style={{ color: 'var(--c-txt-3)', fontSize: '11px', fontFamily: 'IBM Plex Mono, monospace', padding: '40px 20px', textAlign: 'center' }}>{t('tableLoading')}</div>}>
           <LogTable
             entries={entries}
             nextPageToken={nextPageToken}

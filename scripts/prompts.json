@@ -1,0 +1,50 @@
+{
+  "popular": [
+    "What is the capital of France?",
+    "What is the capital of Japan?",
+    "What is the capital of Brazil?",
+    "Explain quantum computing in one sentence.",
+    "Translate 'good morning' to Spanish.",
+    "Translate 'thank you' to Japanese.",
+    "What is FNV-1a hash?",
+    "What is HTTP 429?",
+    "Difference between TCP and UDP in one line.",
+    "What is the speed of light in km/s?",
+    "Convert 100 USD to EUR (approximate).",
+    "What does CPU stand for?",
+    "What does GPU stand for?",
+    "Square root of 144.",
+    "What year did World War II end?",
+    "Who painted the Mona Lisa?",
+    "What is the largest planet in our solar system?",
+    "Define 'photosynthesis' in one sentence.",
+    "How many continents are there?",
+    "What is the chemical formula for water?",
+    "What is the boiling point of water in Celsius?",
+    "Name three primary colors.",
+    "What is REST API?",
+    "What is the difference between HTTP and HTTPS?",
+    "Explain async/await in one sentence.",
+    "What is Kubernetes?",
+    "What is Docker?",
+    "What does API stand for?",
+    "What is JSON?",
+    "What is the meaning of life according to Hitchhiker's Guide?"
+  ],
+  "topics_for_unique": [
+    "Tell me an interesting fact about",
+    "Briefly explain the history of",
+    "Give me one tip about",
+    "Compare and contrast two facts about",
+    "What's a fun trivia about"
+  ],
+  "topics_pool": [
+    "ancient Rome", "Mars exploration", "the deep ocean", "honey bees", "the human brain",
+    "octopus intelligence", "renewable energy", "the great pyramids", "machine learning",
+    "the speed of sound", "tropical rainforests", "dark matter", "polar bears",
+    "ancient Greek philosophers", "the Silk Road", "volcanic islands", "the moon",
+    "lightning", "DNA structure", "the periodic table", "the human heart",
+    "underwater volcanoes", "asteroid belts", "quantum entanglement", "rainbows",
+    "tectonic plates", "migratory birds", "ancient libraries", "sea turtles", "mountain ranges"
+  ]
+}

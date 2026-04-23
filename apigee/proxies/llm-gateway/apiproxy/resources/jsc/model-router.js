@@ -57,6 +57,15 @@ var OPENAPI_ROUTES = {
   "qwen3-next-80b-a3b-thinking-maas": { pub: "qwen", model: "qwen/qwen3-next-80b-a3b-thinking-maas" },
   "qwen3-coder":                    { pub: "qwen", model: "qwen/qwen3-coder-480b-a35b-instruct-maas" },
   "qwen3-coder-480b-a35b-instruct-maas": { pub: "qwen", model: "qwen/qwen3-coder-480b-a35b-instruct-maas" },
+  // Grok (xAI) — Vertex AI publisher is "xai" (not "x-ai")
+  // Only grok-4.20-reasoning is enabled in this project; others require Model Garden enablement
+  "grok-4.20-reasoning":            { pub: "xai", model: "xai/grok-4.20-reasoning" },
+  "grok":                           { pub: "xai", model: "xai/grok-4.20-reasoning" },
+  "grok-4":                         { pub: "xai", model: "xai/grok-4" },
+  "grok-4-fast":                    { pub: "xai", model: "xai/grok-4-fast" },
+  "grok-3":                         { pub: "xai", model: "xai/grok-3" },
+  "grok-3-mini":                    { pub: "xai", model: "xai/grok-3-mini" },
+  "grok-code-fast-1":               { pub: "xai", model: "xai/grok-code-fast-1" },
 };
 
 var GEMINI_ROUTES = {
@@ -73,10 +82,7 @@ var GEMINI_ROUTES = {
   "gemini-2.5-pro":                 { project: PROJECT_02, model: "gemini-2.5-pro" },
   "gemini-2.5-flash":               { project: PROJECT_02, model: "gemini-2.5-flash" },
   "gemini-2.5-flash-lite":          { project: PROJECT_02, model: "gemini-2.5-flash-lite" },
-  // Gemini 2.0
-  "gemini-2.0-flash":               { project: PROJECT_02, model: "gemini-2.0-flash-001" },
-  "gemini-2.0-flash-001":           { project: PROJECT_02, model: "gemini-2.0-flash-001" },
-  "gemini-2.0-flash-lite":          { project: PROJECT_02, model: "gemini-2.0-flash-lite" },
+  // (Gemini 2.0 series retired by Google — removed; requests fall through to default gemini-2.5-flash)
   // Cross-project: YOUR_CROSS_PROJECT_ID (optional, for quota isolation)
   "YOUR_CROSS_PROJECT_ID/gemini-3.1-pro-preview":        { project: PROJECT_GH, model: "gemini-3.1-pro-preview" },
   "YOUR_CROSS_PROJECT_ID/gemini-3.1-flash-lite-preview": { project: PROJECT_GH, model: "gemini-3.1-flash-lite-preview" },
@@ -87,6 +93,9 @@ var GEMINI_ROUTES = {
 };
 
 var CLAUDE_ROUTES = {
+  // Claude 4.7 (Opus available; Sonnet/Haiku not yet released by Anthropic)
+  "claude-opus-4-7":   "claude-opus-4-7",
+  // Claude 4.6
   "claude-opus-4-6":   "claude-opus-4-6",
   "claude-sonnet-4-6": "claude-sonnet-4-6",
   "claude-haiku-4-5":  "claude-haiku-4-5",
@@ -96,17 +105,18 @@ var CLAUDE_ROUTES = {
   "claude-opus-4-1":   "claude-opus-4-1",
 };
 
+// OpenCode Zen free models (verified live 2026-04-23 via /zen/v1/models endpoint)
+// Source: https://opencode.ai/docs/zen/
 var OPENCODE_MODELS = {
   "opencode/nemotron-3-super-free":      "nemotron-3-super-free",
   "opencode/big-pickle":                 "big-pickle",
   "opencode/minimax-m2.5-free":          "minimax-m2.5-free",
-  "opencode/mimo-v2-pro-free":           "mimo-v2-pro-free",
-  "opencode/mimo-v2-omni-free":          "mimo-v2-omni-free",
-  "opencode/mimo-v2-flash-free":         "mimo-v2-flash-free",
-  "opencode/trinity-large-preview-free": "trinity-large-preview-free",
+  "opencode/hy3-preview-free":           "hy3-preview-free",
+  "opencode/ling-2.6-flash-free":        "ling-2.6-flash-free",
+  "opencode/gpt-5-nano":                 "gpt-5-nano",
 };
 
-var DEFAULT = { project: PROJECT_02, model: "gemini-2.0-flash-001" };
+var DEFAULT = { project: PROJECT_02, model: "gemini-2.5-flash" };
 
 // ── KVM 动态配置（由 KV-ReadModelConfig policy 读取）────────────────────────
 

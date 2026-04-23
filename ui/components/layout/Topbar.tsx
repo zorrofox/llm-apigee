@@ -1,10 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { LanguageToggle } from './LanguageToggle';
 
 interface TopbarProps {
   title:    string;
-  parent?:  string;       // 面包屑父级
+  parent?:  string;
   actions?: React.ReactNode;
   alertCount?: number;
   gatewayLive?: boolean;
@@ -18,6 +20,7 @@ export function Topbar({
   gatewayLive = true,
 }: TopbarProps) {
   const router = useRouter();
+  const t      = useTranslations('topbar');
 
   return (
     <header
@@ -27,7 +30,6 @@ export function Topbar({
         borderBottom: '1px solid var(--c-border)',
       }}
     >
-      {/* 面包屑 + 页面标题 */}
       <div
         className="flex items-center gap-2 font-bold text-[15px]"
         style={{ fontFamily: 'Syne, sans-serif' }}
@@ -41,23 +43,19 @@ export function Topbar({
         <span style={{ color: 'var(--c-txt-1)' }}>{title}</span>
       </div>
 
-      {/* 右侧操作区 */}
       <div className="flex items-center gap-2.5">
-        {/* 告警状态 */}
         {alertCount > 0 && (
           <StatusChip color="amber">
             <PulseDot color="amber" />
-            {alertCount} 告警
+            {t('alerts', { count: alertCount })}
           </StatusChip>
         )}
 
-        {/* 网关状态 */}
         <StatusChip color={gatewayLive ? 'green' : 'red'}>
           <PulseDot color={gatewayLive ? 'green' : 'red'} />
-          {gatewayLive ? '网关运行中' : '网关离线'}
+          {gatewayLive ? t('gatewayLive') : t('gatewayDown')}
         </StatusChip>
 
-        {/* 刷新 */}
         <button
           onClick={() => router.refresh()}
           className="text-[11px] px-3.5 py-1.5 rounded-md transition-colors"
@@ -69,8 +67,10 @@ export function Topbar({
             border: '1px solid var(--c-border)',
           }}
         >
-          ↻ 刷新
+          ↻ {t('refresh')}
         </button>
+
+        <LanguageToggle />
 
         {actions}
       </div>
@@ -78,7 +78,6 @@ export function Topbar({
   );
 }
 
-/** 状态标签 chip */
 function StatusChip({
   children,
   color,
@@ -109,7 +108,6 @@ function StatusChip({
   );
 }
 
-/** 脉冲圆点 */
 function PulseDot({ color }: { color: 'green' | 'amber' | 'red' }) {
   const bg = {
     green: 'var(--c-green)',

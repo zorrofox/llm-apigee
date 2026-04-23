@@ -1,6 +1,7 @@
 /**
- * P1 配额配置页面（Server Component）
+ * P1 Quota config page (Server Component)
  */
+import { getTranslations } from 'next-intl/server';
 import { Topbar }         from '@/components/layout/Topbar';
 import { QuotaEditor }    from '@/components/quota/QuotaEditor';
 import { listAllApps, getApiProduct } from '@/lib/apigee';
@@ -47,18 +48,18 @@ async function getAppTokenUsage(): Promise<Map<string, number>> {
 }
 
 export default async function QuotaPage() {
+  const t = await getTranslations('quota');
   const [apps, product, tokenUsage] = await Promise.all([
     listAllApps().catch(() => MOCK_APPS),
     getApiProduct('llm-gateway-product').catch(() => null),
     getAppTokenUsage(),
   ]);
 
-  // 从 Apigee 读取真实的 Product 配置
   const productConfig = parseProductConfig(product?.attributes ?? []);
 
   return (
     <>
-      <Topbar title="配额配置" parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''} alertCount={0} gatewayLive />
+      <Topbar title={t('title')} parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''} alertCount={0} gatewayLive />
       <div className="p-7 space-y-4">
         <QuotaEditor
           apps={apps}

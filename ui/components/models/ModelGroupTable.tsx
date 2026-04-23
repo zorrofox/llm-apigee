@@ -2,15 +2,67 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter }               from 'next/navigation';
+import { useLocale }               from 'next-intl';
 import type { ModelEntry, BackendType } from '@/lib/model-routing';
 
-// ── 常量 ──────────────────────────────────────────────────────────────────────
+const T_EN = {
+  geminiLabel: 'Gemini (Google Vertex AI)',
+  claudeLabel: 'Claude (Anthropic Vertex AI)',
+  maasLabel: 'MaaS Partners (Vertex AI OpenAPI)',
+  opencodeLabel: 'OpenCode Zen (Free)',
+  aliasesCount: (n: number) => `${n} aliases`,
+  callsCount: (n: number) => `${n} calls`,
+  enable: 'Enable',
+  disable: 'Disable',
+  setDefault: 'Set default',
+  opActionFailed: 'Action failed',
+  saveFailed: 'Save failed',
+  inProgress: 'In progress, waiting for KVM cache refresh (~30s)...',
+  groupCount: (n: number) => `${n}`,
+  disabledCount: (n: number) => `${n} disabled`,
+  freeNoQuota: 'Free · not subject to Token Quota',
+  thAlias: 'Alias (primary)',
+  thActualModel: 'Actual model ID',
+  thLastHour: 'Past 1h',
+  thActions: 'Actions',
+  noTraffic: '—',
+  extraTitle: 'Add models dynamically (KVM extra_routes)',
+  extraSubtitle: 'Takes effect ~30s after save, no proxy redeploy needed',
+  saving: 'Saving...',
+  saved: '✓ Saved',
+  save: 'Save',
+  fourTypes: 'Four types: ',
+  schemaLine: 'gemini: {project, model}  |  claude: "model-id"  |  maas: {pub, model}  |  opencode: key must start with opencode/',
+};
 
-const BACKEND_LABEL: Record<BackendType, string> = {
-  gemini:   'Gemini (Google Vertex AI)',
-  claude:   'Claude (Anthropic Vertex AI)',
-  maas:     'MaaS 合作伙伴 (Vertex AI OpenAPI)',
-  opencode: 'OpenCode Zen (免费)',
+const T_ZH = {
+  geminiLabel: 'Gemini (Google Vertex AI)',
+  claudeLabel: 'Claude (Anthropic Vertex AI)',
+  maasLabel: 'MaaS 合作伙伴 (Vertex AI OpenAPI)',
+  opencodeLabel: 'OpenCode Zen (免费)',
+  aliasesCount: (n: number) => `${n} 个别名`,
+  callsCount: (n: number) => `${n} 次`,
+  enable: '启用',
+  disable: '禁用',
+  setDefault: '设为默认',
+  opActionFailed: '操作失败',
+  saveFailed: '保存失败',
+  inProgress: '操作中，等待 KVM 缓存刷新（约 30s）…',
+  groupCount: (n: number) => `${n} 个`,
+  disabledCount: (n: number) => `${n} 已禁用`,
+  freeNoQuota: '免费 · 不受 Token Quota 约束',
+  thAlias: '别名（主）',
+  thActualModel: '实际模型 ID',
+  thLastHour: '过去 1h',
+  thActions: '操作',
+  noTraffic: '—',
+  extraTitle: '动态新增模型（KVM extra_routes）',
+  extraSubtitle: '保存后约 30s 生效，无需重新部署 Apigee 代理',
+  saving: '保存中…',
+  saved: '✓ 已保存',
+  save: '保存',
+  fourTypes: '四种类型：',
+  schemaLine: 'gemini: {project, model}  |  claude: "model-id"  |  maas: {pub, model}  |  opencode: key 须含 opencode/ 前缀',
 };
 
 const BACKEND_COLOR: Record<BackendType, string> = {
@@ -28,11 +80,10 @@ const LABEL_STYLE = {
   color: 'var(--c-txt-3)',
 };
 
-// ── 单行模型 ──────────────────────────────────────────────────────────────────
-
 function ModelRow({
-  model, onToggle, onSetDefault,
+  T, model, onToggle, onSetDefault,
 }: {
+  T:             typeof T_EN;
   model:         ModelEntry;
   onToggle:      (alias: string, disabled: boolean) => void;
   onSetDefault:  (alias: string) => void;
@@ -49,7 +100,6 @@ function ModelRow({
           transition: 'opacity 0.2s',
         }}
       >
-        {/* 状态点 + 别名 */}
         <td className="px-4 py-2.5">
           <div className="flex items-center gap-2">
             <span
@@ -81,14 +131,13 @@ function ModelRow({
                   onClick={() => setShowAliases(v => !v)}
                   className="text-[9px] mt-0.5"
                   style={{ color: 'var(--c-txt-3)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace', padding: 0 }}>
-                  {showAliases ? '▼' : '▶'} {model.aliases.length} 个别名
+                  {showAliases ? '▼' : '▶'} {T.aliasesCount(model.aliases.length)}
                 </button>
               )}
             </div>
           </div>
         </td>
 
-        {/* 实际模型 ID */}
         <td className="px-4 py-2.5">
           <span className="text-[11px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-2)' }}>
             {model.actualModel}
@@ -100,17 +149,14 @@ function ModelRow({
           )}
         </td>
 
-        {/* 过去 1h 流量 */}
         <td className="px-4 py-2.5">
           <span className="text-[11px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: model.callsLastHr > 0 ? color : 'var(--c-txt-3)' }}>
-            {model.callsLastHr > 0 ? `${model.callsLastHr} 次` : '—'}
+            {model.callsLastHr > 0 ? T.callsCount(model.callsLastHr) : T.noTraffic}
           </span>
         </td>
 
-        {/* 操作 */}
         <td className="px-4 py-2.5">
           <div className="flex items-center gap-2">
-            {/* OpenCode 模型不支持禁用（后端已排除在 quota 之外） */}
             {model.backend !== 'opencode' && (
               <button
                 onClick={() => onToggle(model.alias, !model.disabled)}
@@ -122,10 +168,9 @@ function ModelRow({
                   border:     model.disabled ? '1px solid rgba(0,232,122,0.2)' : '1px solid rgba(244,63,94,0.2)',
                   cursor:     'pointer',
                 }}>
-                {model.disabled ? '启用' : '禁用'}
+                {model.disabled ? T.enable : T.disable}
               </button>
             )}
-            {/* 设为默认（仅 Gemini） */}
             {model.backend === 'gemini' && !model.isDefault && !model.disabled && (
               <button
                 onClick={() => onSetDefault(model.alias)}
@@ -137,14 +182,13 @@ function ModelRow({
                   border:     '1px solid var(--c-border-dim)',
                   cursor:     'pointer',
                 }}>
-                设为默认
+                {T.setDefault}
               </button>
             )}
           </div>
         </td>
       </tr>
 
-      {/* 别名展开行 */}
       {showAliases && (
         <tr style={{ borderBottom: '1px solid var(--c-border-dim)', background: 'rgba(0,0,0,0.1)' }}>
           <td colSpan={4} className="px-8 py-2">
@@ -163,8 +207,6 @@ function ModelRow({
   );
 }
 
-// ── 分组表格 ──────────────────────────────────────────────────────────────────
-
 interface ModelGroupTableProps {
   models:       ModelEntry[];
   kvmExtraRaw:  string;
@@ -172,6 +214,16 @@ interface ModelGroupTableProps {
 
 export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
   const router          = useRouter();
+  const locale          = useLocale();
+  const T               = locale === 'zh' ? T_ZH : T_EN;
+
+  const BACKEND_LABEL: Record<BackendType, string> = {
+    gemini:   T.geminiLabel,
+    claude:   T.claudeLabel,
+    maas:     T.maasLabel,
+    opencode: T.opencodeLabel,
+  };
+
   const [pending, startTransition] = useTransition();
   const [saving,  setSaving]  = useState<string | null>(null);
   const [error,   setError]   = useState('');
@@ -192,7 +244,7 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
         body: JSON.stringify({ action, model, value }),
       });
       const d = await res.json();
-      if (!res.ok) { setError(d.error ?? '操作失败'); return; }
+      if (!res.ok) { setError(d.error ?? T.opActionFailed); return; }
       startTransition(() => router.refresh());
     } catch (e) { setError(String(e)); }
     finally { setSaving(null); }
@@ -202,14 +254,14 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
     setExtraSaving(true);
     setError('');
     try {
-      JSON.parse(extra); // 前置验证
+      JSON.parse(extra);
       const res = await fetch('/api/models', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'setExtraRoutes', value: extra }),
       });
       const d = await res.json();
-      if (!res.ok) { setError(d.error ?? '保存失败'); return; }
+      if (!res.ok) { setError(d.error ?? T.saveFailed); return; }
       setExtraSaved(true);
       setTimeout(() => setExtraSaved(false), 2000);
       startTransition(() => router.refresh());
@@ -222,7 +274,6 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
 
   return (
     <div className="space-y-4">
-      {/* 错误提示 */}
       {error && (
         <div className="px-4 py-2 rounded-md text-[11px]"
           style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-red)', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
@@ -230,14 +281,12 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
         </div>
       )}
 
-      {/* 加载指示 */}
       {(pending || saving) && (
         <div className="text-[10px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-          操作中，等待 KVM 缓存刷新（约 30s）…
+          {T.inProgress}
         </div>
       )}
 
-      {/* 各后端分组 */}
       {BACKENDS.map(bt => {
         const group   = byBackend(bt);
         const color   = BACKEND_COLOR[bt];
@@ -247,7 +296,6 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
         return (
           <div key={bt} className="rounded-md overflow-hidden"
             style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
-            {/* 分组标题 */}
             <button
               className="w-full flex items-center justify-between px-5 py-3.5"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', borderBottom: isCollapsed ? 'none' : '1px solid var(--c-border-dim)' }}
@@ -259,29 +307,28 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
                 </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-sm"
                   style={{ fontFamily: 'IBM Plex Mono, monospace', color, background: `${color}12`, border: `1px solid ${color}30` }}>
-                  {group.length} 个
+                  {T.groupCount(group.length)}
                 </span>
                 {disabled > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-sm"
                     style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-red)', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
-                    {disabled} 已禁用
+                    {T.disabledCount(disabled)}
                   </span>
                 )}
                 {bt === 'opencode' && (
                   <span className="text-[9px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-                    免费 · 不受 Token Quota 约束
+                    {T.freeNoQuota}
                   </span>
                 )}
               </div>
               <span style={{ color: 'var(--c-txt-3)', fontSize: '12px' }}>{isCollapsed ? '▶' : '▼'}</span>
             </button>
 
-            {/* 模型表格 */}
             {!isCollapsed && (
               <table className="w-full">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--c-border-dim)' }}>
-                    {['别名（主）', '实际模型 ID', '过去 1h', '操作'].map(h => (
+                    {[T.thAlias, T.thActualModel, T.thLastHour, T.thActions].map(h => (
                       <th key={h} className="px-4 py-2 text-left" style={LABEL_STYLE}>{h}</th>
                     ))}
                   </tr>
@@ -289,6 +336,7 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
                 <tbody>
                   {group.map(m => (
                     <ModelRow
+                      T={T}
                       key={m.alias}
                       model={m}
                       onToggle={(alias, disable) => applyAction(disable ? 'disable' : 'enable', alias)}
@@ -302,15 +350,14 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
         );
       })}
 
-      {/* KVM extra_routes 编辑器 */}
       <div className="rounded-md overflow-hidden" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
         <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid var(--c-border-dim)' }}>
           <div>
             <div className="text-[13px] font-semibold" style={{ fontFamily: 'Syne, sans-serif' }}>
-              动态新增模型（KVM extra_routes）
+              {T.extraTitle}
             </div>
             <div className="text-[11px] mt-1" style={{ color: 'var(--c-txt-3)' }}>
-              保存后约 30s 生效，无需重新部署 Apigee 代理
+              {T.extraSubtitle}
             </div>
           </div>
           <button
@@ -324,7 +371,7 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
               border:     '1px solid rgba(0,232,122,0.3)',
               cursor:     extraSaving ? 'not-allowed' : 'pointer',
             }}>
-            {extraSaving ? '保存中…' : extraSaved ? '✓ 已保存' : '保存'}
+            {extraSaving ? T.saving : extraSaved ? T.saved : T.save}
           </button>
         </div>
         <div className="px-5 py-4">
@@ -341,37 +388,13 @@ export function ModelGroupTable({ models, kvmExtraRaw }: ModelGroupTableProps) {
               padding:    '10px 12px',
               resize:     'vertical',
             }}
-            placeholder={`// 示例：同时新增多类型模型（去掉这行注释再保存）
-{
-  "gemini": {
-    // 新 Gemini 模型（generateContent），project 可选 YOUR_PROJECT_ID 或 YOUR_CROSS_PROJECT_ID（跨项目）
-    "gemini-3.2-pro":          { "project": "YOUR_PROJECT_ID", "model": "gemini-3.2-pro-preview" },
-    "YOUR_CROSS_PROJECT_ID/gemini-3.2-flash":{ "project": "YOUR_CROSS_PROJECT_ID",    "model": "gemini-3.2-flash-preview" }
-  },
-  "claude": {
-    // 新 Claude 模型（rawPredict），value = Vertex AI 上的 Anthropic 模型 ID
-    "claude-haiku-4-6": "claude-haiku-4-6",
-    "haiku":            "claude-haiku-4-5"
-  },
-  "maas": {
-    // MaaS 合作伙伴（Vertex AI OpenAPI endpoint）
-    // pub: qwen / deepseek-ai / zai-org / moonshotai / minimaxai
-    // model: publisher/model-id-maas 格式
-    "qwen3-72b":    { "pub": "qwen",        "model": "qwen/qwen3-72b-instruct-maas" },
-    "deepseek-v3.3":{ "pub": "deepseek-ai", "model": "deepseek-ai/deepseek-v3.3-maas" }
-  },
-  "opencode": {
-    // key 必须以 opencode/ 开头，value 是 OpenCode 平台的实际模型名
-    "opencode/qwen3-free": "qwen3-free"
-  }
-}`}
           />
           <div className="mt-2 space-y-1">
             <div className="text-[9px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-              四种类型：<span style={{ color: 'var(--c-green)' }}>gemini</span> · <span style={{ color: 'var(--c-blue)' }}>claude</span> · <span style={{ color: 'var(--c-amber)' }}>maas</span> · <span style={{ color: 'var(--c-txt-3)' }}>opencode</span>
+              {T.fourTypes}<span style={{ color: 'var(--c-green)' }}>gemini</span> · <span style={{ color: 'var(--c-blue)' }}>claude</span> · <span style={{ color: 'var(--c-amber)' }}>maas</span> · <span style={{ color: 'var(--c-txt-3)' }}>opencode</span>
             </div>
             <div className="text-[9px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-              gemini: {'{'}project, model{'}'} &nbsp;|&nbsp; claude: {'"model-id"'} &nbsp;|&nbsp; maas: {'{'}pub, model{'}'} &nbsp;|&nbsp; opencode: key 须含 opencode/ 前缀
+              {T.schemaLine}
             </div>
           </div>
         </div>

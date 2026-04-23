@@ -1,6 +1,7 @@
 /**
- * P1 API Keys 管理页面
+ * P1 API Keys management page
  */
+import { getTranslations } from 'next-intl/server';
 import { Topbar }    from '@/components/layout/Topbar';
 import { KeyTable }  from '@/components/keys/KeyTable';
 import { listAllApps } from '@/lib/apigee';
@@ -10,18 +11,18 @@ export const dynamic   = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function KeysPage() {
+  const t = await getTranslations('keys');
   let apps: ApiApp[] = [];
   try {
     apps = await listAllApps();
   } catch {
-    // 开发环境可能无 GCP 凭据，使用 mock 数据
     apps = MOCK_APPS;
   }
 
   return (
     <>
       <Topbar
-        title="API Keys"
+        title={t('title')}
         parent={process.env.GOOGLE_CLOUD_PROJECT ?? ''}
         alertCount={0}
         gatewayLive

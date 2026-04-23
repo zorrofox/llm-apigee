@@ -2,27 +2,28 @@
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
+import { useLocale } from 'next-intl';
 
 interface LogFiltersProps {
   models: string[];
   apps:   string[];
 }
 
-const STATUS_OPTIONS = [
-  { value: '',    label: '全部状态码' },
-  { value: '200', label: '200 成功' },
-  { value: '2xx', label: '2xx 成功' },
-  { value: '429', label: '429 限流' },
-  { value: '4xx', label: '4xx 客户端错误' },
-  { value: '500', label: '500 服务错误' },
-  { value: '5xx', label: '5xx 服务器错误' },
-];
+const T_EN = {
+  allStatus: 'All status', s200: '200 success', s2xx: '2xx success', s429: '429 rate-limited',
+  s4xx: '4xx client error', s500: '500 service error', s5xx: '5xx server error',
+  allCache: 'All', cacheHit: 'HIT', cacheMiss: 'MISS',
+  allModels: 'All models', allApps: 'All apps',
+  reset: '✕ Reset', loading: 'Loading...',
+};
 
-const CACHE_OPTIONS = [
-  { value: '',     label: '全部' },
-  { value: 'HIT',  label: 'HIT 命中' },
-  { value: 'MISS', label: 'MISS 未命中' },
-];
+const T_ZH = {
+  allStatus: '全部状态码', s200: '200 成功', s2xx: '2xx 成功', s429: '429 限流',
+  s4xx: '4xx 客户端错误', s500: '500 服务错误', s5xx: '5xx 服务器错误',
+  allCache: '全部', cacheHit: 'HIT 命中', cacheMiss: 'MISS 未命中',
+  allModels: '全部模型', allApps: '全部 App',
+  reset: '✕ 重置', loading: '查询中…',
+};
 
 const selectStyle = {
   fontFamily: 'IBM Plex Mono, monospace',
@@ -40,14 +41,32 @@ export function LogFilters({ models, apps }: LogFiltersProps) {
   const router      = useRouter();
   const pathname    = usePathname();
   const params      = useSearchParams();
+  const locale      = useLocale();
+  const T           = locale === 'zh' ? T_ZH : T_EN;
   const [pending, startTransition] = useTransition();
+
+  const STATUS_OPTIONS = [
+    { value: '',    label: T.allStatus },
+    { value: '200', label: T.s200 },
+    { value: '2xx', label: T.s2xx },
+    { value: '429', label: T.s429 },
+    { value: '4xx', label: T.s4xx },
+    { value: '500', label: T.s500 },
+    { value: '5xx', label: T.s5xx },
+  ];
+
+  const CACHE_OPTIONS = [
+    { value: '',     label: T.allCache },
+    { value: 'HIT',  label: T.cacheHit },
+    { value: 'MISS', label: T.cacheMiss },
+  ];
 
   function update(key: string, value: string) {
     const next = new URLSearchParams(params.toString());
     if (value) next.set(key, value);
     else next.delete(key);
-    next.delete('page');      // 重置分页
-    next.delete('pageToken'); // 必须清除旧的翻页游标，否则旧 token 与新筛选条件不匹配
+    next.delete('page');
+    next.delete('pageToken');
     startTransition(() => router.push(`${pathname}?${next.toString()}`));
   }
 
@@ -59,45 +78,24 @@ export function LogFilters({ models, apps }: LogFiltersProps) {
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {/* 模型筛选 */}
-      <select
-        value={params.get('model') ?? ''}
-        onChange={e => update('model', e.target.value)}
-        style={selectStyle}
-      >
-        <option value="">全部模型</option>
+      <select value={params.get('model') ?? ''} onChange={e => update('model', e.target.value)} style={selectStyle}>
+        <option value="">{T.allModels}</option>
         {models.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
 
-      {/* App 筛选 */}
-      <select
-        value={params.get('app') ?? ''}
-        onChange={e => update('app', e.target.value)}
-        style={selectStyle}
-      >
-        <option value="">全部 App</option>
+      <select value={params.get('app') ?? ''} onChange={e => update('app', e.target.value)} style={selectStyle}>
+        <option value="">{T.allApps}</option>
         {apps.map(a => <option key={a} value={a}>{a}</option>)}
       </select>
 
-      {/* 状态码筛选 */}
-      <select
-        value={params.get('status') ?? ''}
-        onChange={e => update('status', e.target.value)}
-        style={selectStyle}
-      >
+      <select value={params.get('status') ?? ''} onChange={e => update('status', e.target.value)} style={selectStyle}>
         {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
 
-      {/* 缓存状态筛选 */}
-      <select
-        value={params.get('cache') ?? ''}
-        onChange={e => update('cache', e.target.value)}
-        style={selectStyle}
-      >
+      <select value={params.get('cache') ?? ''} onChange={e => update('cache', e.target.value)} style={selectStyle}>
         {CACHE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
 
-      {/* 重置 */}
       {hasFilter && (
         <button
           onClick={reset}
@@ -110,14 +108,13 @@ export function LogFilters({ models, apps }: LogFiltersProps) {
             cursor:     'pointer',
           }}
         >
-          ✕ 重置
+          {T.reset}
         </button>
       )}
 
-      {/* 加载指示 */}
       {pending && (
         <span className="text-[10px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-          查询中…
+          {T.loading}
         </span>
       )}
     </div>

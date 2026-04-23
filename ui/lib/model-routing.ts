@@ -8,7 +8,7 @@ import { GoogleAuth } from 'google-auth-library';
 
 const PROJECT = process.env.GOOGLE_CLOUD_PROJECT ?? '';
 const ORG     = process.env.APIGEE_ORG ?? '';
-const ENV     = 'prod';
+const ENV     = process.env.APIGEE_ENV ?? 'eval';
 const BASE    = `https://apigee.googleapis.com/v1/organizations/${ORG}`;
 
 const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
@@ -172,7 +172,11 @@ export async function getRoutingConfig(): Promise<RoutingConfig> {
   const kvmDisabled = kvmDisabledRaw ? kvmDisabledRaw.split(',').map(m => m.trim()).filter(Boolean) : [];
   const disabledSet = new Set(kvmDisabled);
   const kvmDefault  = kvmDefaultRaw || '';
-  const defaultModelId = kvmDefault || 'gemini-2.0-flash-001';
+
+  // Parse DEFAULT model from model-router.js source (e.g., var DEFAULT = { project: PROJECT_02, model: "gemini-2.5-flash" };)
+  const codeDefaultMatch = jsCode.match(/var\s+DEFAULT\s*=\s*\{[^}]*model\s*:\s*["']([^"']+)["']/);
+  const codeDefault      = codeDefaultMatch ? codeDefaultMatch[1] : 'gemini-2.5-flash';
+  const defaultModelId   = kvmDefault || codeDefault;
 
   // 解析 extra_routes
   let extraGemini:  Record<string, { project: string; model: string }> = {};

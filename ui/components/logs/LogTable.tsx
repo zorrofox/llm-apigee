@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import type { LogEntry } from '@/lib/logging';
 
 interface LogTableProps {
@@ -10,17 +11,43 @@ interface LogTableProps {
   currentPage:   number;
 }
 
-function relTime(ts: string): string {
-  const s = (Date.now() - new Date(ts).getTime()) / 1000;
-  if (s < 60)    return `${Math.floor(s)}秒前`;
-  if (s < 3600)  return `${Math.floor(s / 60)}分前`;
-  if (s < 86400) return `${Math.floor(s / 3600)}小时前`;
-  return new Date(ts).toLocaleDateString('zh-CN');
-}
+const T_EN = {
+  noLogs: 'No matching log entries',
+  thTime: 'Time', thModel: 'Model', thApp: 'App', thStatus: 'Status', thCache: 'Cache',
+  thLatency: 'Latency', thTokens: 'Tokens', thEffective: 'Effective',
+  pageInfo: (p: number, n: number) => `Page ${p} · ${n} entries`,
+  prev: '← Previous', next: 'Next →',
+  detailRequestId: 'Request ID', detailTime: 'Time',
+  detailModelReq: 'Model (request)', detailModelRes: 'Model (resolved)',
+  detailPub: 'Publisher', detailBackend: 'Backend',
+  detailApp: 'App', detailDev: 'Developer', detailIp: 'Client IP',
+  detailStatus: 'Status', detailCache: 'Cache status', detailScore: 'Cache similarity',
+  detailLat: 'Total latency', detailBackendLat: 'Backend latency',
+  detailIn: 'Input tokens', detailOut: 'Output tokens',
+  detailTotal: 'Total tokens', detailEff: 'Effective tokens', detailWeight: 'Model weight',
+  secondsAgo: (n: number) => `${n}s ago`,
+  minutesAgo: (n: number) => `${n}m ago`,
+  hoursAgo: (n: number) => `${n}h ago`,
+};
 
-function absTime(ts: string): string {
-  return new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
+const T_ZH = {
+  noLogs: '没有找到匹配的日志条目',
+  thTime: '时间', thModel: '模型', thApp: 'App', thStatus: '状态', thCache: '缓存',
+  thLatency: '延迟', thTokens: 'Tokens', thEffective: '有效',
+  pageInfo: (p: number, n: number) => `第 ${p} 页 · ${n} 条`,
+  prev: '← 上一页', next: '下一页 →',
+  detailRequestId: 'Request ID', detailTime: '时间',
+  detailModelReq: '模型（请求）', detailModelRes: '模型（解析）',
+  detailPub: 'Publisher', detailBackend: 'Backend',
+  detailApp: 'App', detailDev: '开发者', detailIp: '客户端 IP',
+  detailStatus: '状态码', detailCache: '缓存状态', detailScore: '缓存相似度',
+  detailLat: '总延迟', detailBackendLat: '后端延迟',
+  detailIn: '输入 tokens', detailOut: '输出 tokens',
+  detailTotal: '总 tokens', detailEff: '有效 tokens', detailWeight: '模型权重',
+  secondsAgo: (n: number) => `${n}秒前`,
+  minutesAgo: (n: number) => `${n}分前`,
+  hoursAgo: (n: number) => `${n}小时前`,
+};
 
 function StatusBadge({ code }: { code: string }) {
   const n = Number(code);
@@ -66,34 +93,34 @@ function DetailRow({ label, value, mono = false }: { label: string; value: strin
   );
 }
 
-function ExpandedDetail({ entry }: { entry: LogEntry }) {
+function ExpandedDetail({ T, entry, locale }: { T: typeof T_EN; entry: LogEntry; locale: string }) {
   const fmtMs = (ms: string) => ms ? `${ms} ms` : '—';
   const fmtTok = (t: string) => t && t !== '0' ? t : '—';
   return (
     <div className="px-5 py-3" style={{ background: 'rgba(0,0,0,0.15)' }}>
       <div className="grid grid-cols-2 gap-x-8">
         <div>
-          <DetailRow label="Request ID"    value={entry.requestId}        mono />
-          <DetailRow label="时间"          value={new Date(entry.timestamp).toLocaleString('zh-CN')} />
-          <DetailRow label="模型（请求）"  value={entry.modelRequested}   mono />
-          <DetailRow label="模型（解析）"  value={entry.modelResolved}    mono />
-          <DetailRow label="Publisher"     value={entry.publisher}        mono />
-          <DetailRow label="Backend"       value={entry.backend}          mono />
-          <DetailRow label="App"           value={entry.apiKeyApp} />
-          <DetailRow label="开发者"        value={entry.apiKeyDeveloper} />
-          <DetailRow label="客户端 IP"     value={entry.clientIp}         mono />
+          <DetailRow label={T.detailRequestId}    value={entry.requestId}        mono />
+          <DetailRow label={T.detailTime}         value={new Date(entry.timestamp).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')} />
+          <DetailRow label={T.detailModelReq}     value={entry.modelRequested}   mono />
+          <DetailRow label={T.detailModelRes}     value={entry.modelResolved}    mono />
+          <DetailRow label={T.detailPub}          value={entry.publisher}        mono />
+          <DetailRow label={T.detailBackend}      value={entry.backend}          mono />
+          <DetailRow label={T.detailApp}          value={entry.apiKeyApp} />
+          <DetailRow label={T.detailDev}          value={entry.apiKeyDeveloper} />
+          <DetailRow label={T.detailIp}           value={entry.clientIp}         mono />
         </div>
         <div>
-          <DetailRow label="状态码"        value={entry.statusCode}       mono />
-          <DetailRow label="缓存状态"      value={entry.cacheStatus || '—'} />
-          <DetailRow label="缓存相似度"    value={entry.cacheScore ? parseFloat(entry.cacheScore).toFixed(6) : '—'} mono />
-          <DetailRow label="总延迟"        value={fmtMs(entry.totalLatencyMs)}   mono />
-          <DetailRow label="后端延迟"      value={fmtMs(entry.targetLatencyMs)}  mono />
-          <DetailRow label="输入 tokens"   value={fmtTok(entry.promptTokens)}    mono />
-          <DetailRow label="输出 tokens"   value={fmtTok(entry.completionTokens)}mono />
-          <DetailRow label="总 tokens"     value={fmtTok(entry.totalTokens)}     mono />
-          <DetailRow label="有效 tokens"   value={fmtTok(entry.effectiveTokens)} mono />
-          <DetailRow label="模型权重"      value={entry.tokenWeight ? `${entry.tokenWeight}×` : '—'} mono />
+          <DetailRow label={T.detailStatus}       value={entry.statusCode}       mono />
+          <DetailRow label={T.detailCache}        value={entry.cacheStatus || '—'} />
+          <DetailRow label={T.detailScore}        value={entry.cacheScore ? parseFloat(entry.cacheScore).toFixed(6) : '—'} mono />
+          <DetailRow label={T.detailLat}          value={fmtMs(entry.totalLatencyMs)}   mono />
+          <DetailRow label={T.detailBackendLat}   value={fmtMs(entry.targetLatencyMs)}  mono />
+          <DetailRow label={T.detailIn}           value={fmtTok(entry.promptTokens)}    mono />
+          <DetailRow label={T.detailOut}          value={fmtTok(entry.completionTokens)}mono />
+          <DetailRow label={T.detailTotal}        value={fmtTok(entry.totalTokens)}     mono />
+          <DetailRow label={T.detailEff}          value={fmtTok(entry.effectiveTokens)} mono />
+          <DetailRow label={T.detailWeight}       value={entry.tokenWeight ? `${entry.tokenWeight}×` : '—'} mono />
         </div>
       </div>
     </div>
@@ -103,12 +130,25 @@ function ExpandedDetail({ entry }: { entry: LogEntry }) {
 export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const locale = useLocale();
+  const T = locale === 'zh' ? T_ZH : T_EN;
 
-  /** 构建保留当前筛选参数的分页 URL */
+  function relTime(ts: string): string {
+    const s = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (s < 60)    return T.secondsAgo(Math.floor(s));
+    if (s < 3600)  return T.minutesAgo(Math.floor(s / 60));
+    if (s < 86400) return T.hoursAgo(Math.floor(s / 3600));
+    return new Date(ts).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US');
+  }
+
+  function absTime(ts: string): string {
+    return new Date(ts).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US',
+      { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
   function pageUrl(page: number, token?: string): string {
     const p = new URLSearchParams(searchParams.toString());
     p.set('page', String(page));
-    // URLSearchParams.set() 自动编码，不需要 encodeURIComponent（否则双重编码）
     if (token) p.set('pageToken', token);
     else p.delete('pageToken');
     return `?${p.toString()}`;
@@ -126,7 +166,7 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
     return (
       <div className="rounded-md overflow-hidden" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
         <div className="px-5 py-16 text-center text-[12px]" style={{ color: 'var(--c-txt-3)', fontFamily: 'IBM Plex Mono, monospace' }}>
-          没有找到匹配的日志条目
+          {T.noLogs}
         </div>
       </div>
     );
@@ -137,7 +177,7 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
       <table className="w-full">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--c-border-dim)' }}>
-            {['时间', '模型', 'App', '状态', '缓存', '延迟', 'Tokens', '有效'].map(h => (
+            {[T.thTime, T.thModel, T.thApp, T.thStatus, T.thCache, T.thLatency, T.thTokens, T.thEffective].map(h => (
               <th key={h} className="px-4 py-3 text-left" style={LABEL_STYLE}>{h}</th>
             ))}
             <th className="px-4 py-3 w-8" style={LABEL_STYLE} />
@@ -163,7 +203,6 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
                     background: isOpen ? 'rgba(255,255,255,0.02)' : 'transparent',
                   }}
                 >
-                  {/* 时间 */}
                   <td className="px-4 py-2.5">
                     <div className="text-[11px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-1)' }}>
                       {absTime(entry.timestamp)}
@@ -173,7 +212,6 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
                     </div>
                   </td>
 
-                  {/* 模型 */}
                   <td className="px-4 py-2.5 max-w-[180px]">
                     <div className="text-[11px] truncate" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-1)' }}>
                       {entry.modelResolved || entry.modelRequested || '—'}
@@ -183,45 +221,38 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
                     )}
                   </td>
 
-                  {/* App */}
                   <td className="px-4 py-2.5">
                     <div className="text-[11px]" style={{ color: 'var(--c-txt-2)' }}>
                       {entry.apiKeyApp || '—'}
                     </div>
                   </td>
 
-                  {/* 状态码 */}
                   <td className="px-4 py-2.5">
                     <StatusBadge code={entry.statusCode} />
                   </td>
 
-                  {/* 缓存 */}
                   <td className="px-4 py-2.5">
                     <CacheBadge status={entry.cacheStatus} />
                   </td>
 
-                  {/* 延迟 */}
                   <td className="px-4 py-2.5">
                     <span className="text-[11px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-2)' }}>
                       {entry.totalLatencyMs ? `${entry.totalLatencyMs}ms` : '—'}
                     </span>
                   </td>
 
-                  {/* Tokens */}
                   <td className="px-4 py-2.5">
                     <span className="text-[11px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-2)' }}>
                       {entry.totalTokens && entry.totalTokens !== '0' ? entry.totalTokens : '—'}
                     </span>
                   </td>
 
-                  {/* 有效 tokens */}
                   <td className="px-4 py-2.5">
                     <span className="text-[11px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
                       {entry.effectiveTokens && entry.effectiveTokens !== '0' ? entry.effectiveTokens : '—'}
                     </span>
                   </td>
 
-                  {/* 展开箭头 */}
                   <td className="px-4 py-2.5 text-center">
                     <span className="text-[10px]" style={{ color: 'var(--c-txt-3)', transition: 'transform 0.15s', display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none' }}>
                       ›
@@ -229,11 +260,10 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
                   </td>
                 </tr>
 
-                {/* 展开详情行 */}
                 {isOpen && (
                   <tr key={`${key}-detail`} style={{ borderBottom: '1px solid var(--c-border-dim)' }}>
                     <td colSpan={9} style={{ padding: 0 }}>
-                      <ExpandedDetail entry={entry} />
+                      <ExpandedDetail T={T} entry={entry} locale={locale} />
                     </td>
                   </tr>
                 )}
@@ -243,25 +273,24 @@ export function LogTable({ entries, nextPageToken, currentPage }: LogTableProps)
         </tbody>
       </table>
 
-      {/* 分页 */}
       <div className="flex items-center justify-between px-5 py-3"
         style={{ borderTop: '1px solid var(--c-border-dim)' }}>
         <span className="text-[10px]" style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-txt-3)' }}>
-          第 {currentPage} 页 · {entries.length} 条
+          {T.pageInfo(currentPage, entries.length)}
         </span>
         <div className="flex gap-2">
           {currentPage > 1 && (
             <a href={pageUrl(currentPage - 1)}
               className="text-[11px] px-3 py-1.5 rounded-sm"
               style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-blue)', background: 'rgba(61,158,255,0.08)', border: '1px solid rgba(61,158,255,0.2)' }}>
-              ← 上一页
+              {T.prev}
             </a>
           )}
           {nextPageToken && (
             <a href={pageUrl(currentPage + 1, nextPageToken)}
               className="text-[11px] px-3 py-1.5 rounded-sm"
               style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'var(--c-blue)', background: 'rgba(61,158,255,0.08)', border: '1px solid rgba(61,158,255,0.2)' }}>
-              下一页 →
+              {T.next}
             </a>
           )}
         </div>
